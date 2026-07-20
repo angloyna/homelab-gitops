@@ -9,7 +9,7 @@ spec:
   project: default
   sources:
     - repoURL: git@github.com:spike-electric/flow.git
-      targetRevision: main
+      targetRevision: angloyna-dev
       path: deploy/helm/flow-migrations
       helm:
         valueFiles:

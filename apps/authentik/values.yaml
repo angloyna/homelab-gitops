@@ -10,6 +10,7 @@ postgresql:
     existingSecret: authentik-secret-key
     secretKeys:
       userPasswordKey: AUTHENTIK_POSTGRESQL__PASSWORD
+      adminPasswordKey: postgres-password
 
 server:
   ingress:

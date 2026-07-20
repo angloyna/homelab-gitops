@@ -1,0 +1,16 @@
+authentik:
+  existingSecret:
+    secretName: authentik-secret-key
+
+postgresql:
+  enabled: true
+
+redis:
+  enabled: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - auth.turdblossom.dev

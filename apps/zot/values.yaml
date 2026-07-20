@@ -2,6 +2,11 @@ service:
   type: ClusterIP
   port: 5000
 
+# louise has had intermittent network/reboot flakiness; pin to the
+# control-plane node instead since it's been stable.
+nodeSelector:
+  kubernetes.io/hostname: tina
+
 persistence: true
 pvc:
   create: true

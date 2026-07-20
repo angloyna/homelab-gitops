@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flow-migrations
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: git@github.com:spike-electric/flow.git
+      targetRevision: main
+      path: deploy/helm/flow-migrations
+      helm:
+        valueFiles:
+          - $values/apps/flow-migrations/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flow-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

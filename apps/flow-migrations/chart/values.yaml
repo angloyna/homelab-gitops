@@ -1,0 +1,16 @@
+dbName: flow_data
+dbServiceName: flow-db
+
+image:
+  registry: zot.zot.svc.cluster.local:5000
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Same Secret used by the main flow chart -- must exist in this namespace
+# before the first sync. See homelab-gitops secrets checklist.
+existingSecret: flow-dev-secrets
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi

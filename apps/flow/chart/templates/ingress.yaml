@@ -1,0 +1,102 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.hostname }}
+      http:
+        paths:
+          - path: /bc/webhook
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  number: 8000
+          - path: /linear/webhook
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  number: 8000
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  number: 8000
+          - path: /socket
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-realtime
+                port:
+                  number: 4000
+          - path: /realtime/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-realtime
+                port:
+                  number: 4000
+          - path: /livez
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-realtime
+                port:
+                  number: 4000
+          - path: /readyz
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-realtime
+                port:
+                  number: 4000
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-frontend
+                port:
+                  number: 5173
+---
+# Separate Ingress just for /public/, so the stripPrefix Middleware only
+# applies to this path and not the whole host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-public
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: "{{ .Release.Namespace }}-{{ .Release.Name }}-strip-public@kubernetescrd"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.hostname }}
+      http:
+        paths:
+          - path: /public/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-api-public
+                port:
+                  number: 8000

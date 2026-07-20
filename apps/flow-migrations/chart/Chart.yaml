@@ -1,0 +1,6 @@
+apiVersion: v2
+name: flow-migrations
+description: One-shot Flyway migration Job for the flow database, run as its own ArgoCD Application ahead of the main flow chart (sync-wave 0)
+type: application
+version: 0.1.0
+appVersion: "dev"

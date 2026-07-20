@@ -1,0 +1,45 @@
+# Named by image tag, not Helm release revision -- ArgoCD renders this chart
+# via `helm template` (no meaningful Release.Revision to key off), so a new
+# tag naturally produces a new Job object on each deploy. ArgoCD's
+# automated.prune removes the previous tag's Job once it's no longer in the
+# rendered manifest set; ttlSecondsAfterFinished is a second cleanup layer.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flow-migrations-{{ .Values.image.tag }}
+  labels:
+    app.kubernetes.io/part-of: flow
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: flow-migrations
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrations
+          image: "{{ .Values.image.registry }}/flow-migrations:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: FLYWAY_URL
+              value: "jdbc:postgresql://{{ .Values.dbServiceName }}:5432/{{ .Values.dbName }}"
+            - name: FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: DB_USER
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: DB_PASSWORD
+            - name: FLYWAY_CONNECT_RETRIES
+              value: "10"
+            - name: FLYWAY_CONNECT_RETRIES_INTERVAL
+              value: "3"
+          command: ["flyway", "-X", "migrate"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -7,16 +7,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
-  sources:
-    - repoURL: git@github.com:spike-electric/flow.git
-      targetRevision: angloyna-dev
-      path: deploy/helm/flow-migrations
-      helm:
-        valueFiles:
-          - $values/apps/flow-migrations/values.yaml
-    - repoURL: git@github.com:angloyna/homelab-gitops.git
-      targetRevision: HEAD
-      ref: values
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/flow-migrations/chart
+    helm:
+      valueFiles:
+        - ../values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: flow-dev

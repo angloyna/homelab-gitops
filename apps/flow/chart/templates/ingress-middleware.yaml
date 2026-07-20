@@ -1,0 +1,16 @@
+# Traefik doesn't strip path prefixes by default (unlike the nginx proxy_pass
+# trailing-slash trick used in deploy/nginx/*.conf today). api-public's routes
+# are mounted at root internally, so /public/* needs the prefix stripped
+# before reaching the service. Requires Traefik's CRDs to be installed
+# (kubectl get crd | grep traefik) -- if not, mount api-public's routes under
+# an actual /public prefix in the app instead.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-strip-public
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - /public

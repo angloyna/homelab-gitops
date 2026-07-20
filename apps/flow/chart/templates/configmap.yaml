@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+data:
+  APP_TIMEZONE: {{ .Values.config.appTimezone | quote }}
+  MAX_UPLOAD_BYTES: {{ .Values.config.maxUploadBytes | quote }}
+  DISABLE_SCHEDULER: {{ .Values.config.disableScheduler | quote }}
+  DEV_SKIP_LOGIN: {{ .Values.config.devSkipLogin | quote }}
+  VITE_DEV_SKIP_LOGIN: {{ .Values.config.devSkipLogin | quote }}
+  MAX_SCAN_INPUT_LENGTH: {{ .Values.config.maxScanInputLength | quote }}
+  SCAN_WORKER_CONCURRENCY: {{ .Values.config.scanWorkerConcurrency | quote }}
+  BC_EXPORT_DIR: {{ .Values.config.bcExportDir | quote }}
+  ENVIRONMENT: {{ .Values.config.bcEnvironment | quote }}
+  PAYLOCITY_BASE_URL: {{ .Values.config.paylocityBaseUrl | quote }}
+  PAYLOCITY_EMPLOYEE_SYNC_SOURCE: {{ .Values.config.paylocityEmployeeSyncSource | quote }}
+  PAYLOCITY_PUNCH_ANOMALY_HOURS: {{ .Values.config.paylocityPunchAnomalyHours | quote }}
+  PAYLOCITY_PUNCH_CAP_HOURS: {{ .Values.config.paylocityPunchCapHours | quote }}
+  PAYLOCITY_PUNCH_SYNC_DAYS: {{ .Values.config.paylocityPunchSyncDays | quote }}
+  ATTACHMENTS_DIR: "/data/attachments"
+  DB_NAME: {{ .Values.db.name | quote }}
+  DB_HOST: {{ .Release.Name }}-db
+  DB_PORT: "5432"

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api-public
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    app: {{ .Release.Name }}-api-public
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-api-public
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-api-public
+    spec:
+      containers:
+        - name: api-public
+          image: "{{ .Values.image.registry }}/flow-api-public:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          env:
+            - name: API_URL
+              value: "http://{{ .Release.Name }}-api:8000"
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.apiPublic.resources | nindent 12 }}

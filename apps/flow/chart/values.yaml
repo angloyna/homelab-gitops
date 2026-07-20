@@ -1,0 +1,76 @@
+image:
+  registry: zot.zot.svc.cluster.local:5000
+  tag: dev
+  pullPolicy: IfNotPresent
+
+hostname: flow-dev.turdblossom.dev
+
+# Name of a Secret (created out-of-band, not by this chart) holding all the
+# real secrets -- DB_USER, DB_PASSWORD, SECRET_KEY_BASE, integration API
+# keys, etc. See deploy/helm/flow/README or the homelab-gitops secrets
+# checklist for the exact key list.
+existingSecret: flow-dev-secrets
+
+replicaCount: 1
+
+db:
+  image: postgis/postgis:18-3.6
+  name: flow_data
+  storage: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+attachments:
+  storage: 10Gi
+
+api:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+apiPublic:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+realtime:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+frontend:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# Non-secret config -- rendered into a ConfigMap and consumed via envFrom.
+config:
+  appTimezone: "America/Chicago"
+  maxUploadBytes: "104857600"
+  disableScheduler: "false"
+  devSkipLogin: "false"
+  maxScanInputLength: "100"
+  scanWorkerConcurrency: "10"
+  bcExportDir: "/tmp/bc_exports"
+  bcEnvironment: "Sandbox"
+  paylocityBaseUrl: "https://dc1prodgwext.paylocity.com"
+  paylocityEmployeeSyncSource: "paylocity"
+  paylocityPunchAnomalyHours: "24"
+  paylocityPunchCapHours: "12"
+  paylocityPunchSyncDays: "14"

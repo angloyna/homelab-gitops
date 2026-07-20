@@ -4,9 +4,12 @@ authentik:
 
 postgresql:
   enabled: true
-
-redis:
-  enabled: true
+  auth:
+    username: authentik
+    database: authentik
+    existingSecret: authentik-secret-key
+    secretKeys:
+      userPasswordKey: AUTHENTIK_POSTGRESQL__PASSWORD
 
 server:
   ingress:

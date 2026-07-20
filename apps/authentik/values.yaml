@@ -10,7 +10,4 @@ redis:
 
 server:
   ingress:
-    enabled: true
-    ingressClassName: traefik
-    hosts:
-      - auth.turdblossom.dev
+    enabled: false

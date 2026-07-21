@@ -1,0 +1,13 @@
+# Matches the values already applied to the live "longhorn" Helm release
+# (chart 1.12.0, namespace longhorn-system), plus a fix for new volumes:
+# this is a 2-node cluster, so the default 3-replica ask can never fully
+# schedule and leaves every volume permanently "degraded".
+defaultSettings:
+  defaultReplicaCount: 2
+
+# The longhorn StorageClass bakes numberOfReplicas into its parameters,
+# which take precedence over defaultSettings.defaultReplicaCount for new
+# PVCs. StorageClass parameters are immutable once created, so applying
+# this requires recreating the StorageClass - not done automatically.
+persistence:
+  defaultClassReplicaCount: 2

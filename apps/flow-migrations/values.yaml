@@ -6,3 +6,6 @@ image:
   tag: dev
 
 existingSecret: flow-dev-secrets
+
+nodeSelector:
+  kubernetes.io/hostname: tina

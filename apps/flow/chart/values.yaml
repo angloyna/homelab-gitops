@@ -7,11 +7,13 @@ hostname: flow-dev.turdblossom.dev
 
 # Name of a Secret (created out-of-band, not by this chart) holding all the
 # real secrets -- DB_USER, DB_PASSWORD, SECRET_KEY_BASE, integration API
-# keys, etc. See deploy/helm/flow/README or the homelab-gitops secrets
-# checklist for the exact key list.
+# keys, etc.
 existingSecret: flow-dev-secrets
 
 replicaCount: 1
+
+# e.g. {kubernetes.io/hostname: some-node} to pin all pods to one node.
+nodeSelector: {}
 
 db:
   image: postgis/postgis:18-3.6

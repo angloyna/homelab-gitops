@@ -15,6 +15,10 @@ spec:
       labels:
         app: {{ .Release.Name }}-api-public
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api-public
           image: "{{ .Values.image.registry }}/flow-api-public:{{ .Values.image.tag }}"

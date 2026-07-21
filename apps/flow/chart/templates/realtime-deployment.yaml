@@ -15,6 +15,10 @@ spec:
       labels:
         app: {{ .Release.Name }}-realtime
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: realtime
           image: "{{ .Values.image.registry }}/flow-realtime:{{ .Values.image.tag }}"

@@ -5,3 +5,7 @@ image:
 hostname: flow-dev.turdblossom.dev
 
 existingSecret: flow-dev-secrets
+
+# louise has had intermittent network/reboot issues; tina has been stable.
+nodeSelector:
+  kubernetes.io/hostname: tina

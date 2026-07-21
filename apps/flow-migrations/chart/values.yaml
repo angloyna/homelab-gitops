@@ -6,7 +6,8 @@ image:
   # apps/flow/chart/values.yaml for why (image pulls don't go through CoreDNS).
   registry: 10.43.114.154:5000
   tag: dev
-  pullPolicy: IfNotPresent
+  # Always, not IfNotPresent -- see the note in apps/flow/chart/values.yaml.
+  pullPolicy: Always
 
 # Same Secret used by the main flow chart -- must exist in this namespace
 # before the first sync. See homelab-gitops secrets checklist.

@@ -8,7 +8,12 @@ image:
   # Update this if zot's Service is ever deleted/recreated (new ClusterIP).
   registry: 10.43.114.154:5000
   tag: dev
-  pullPolicy: IfNotPresent
+  # Always, not IfNotPresent: this "dev" tag gets reused/overwritten on every
+  # local rebuild+push, and IfNotPresent means a node with anything already
+  # cached under that tag never re-pulls -- silently running stale (possibly
+  # wrong-architecture) images. Always guarantees the node checks the
+  # registry for a new digest every time a pod starts.
+  pullPolicy: Always
 
 hostname: flow-dev.turdblossom.dev
 

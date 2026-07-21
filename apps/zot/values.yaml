@@ -12,6 +12,10 @@ pvc:
   create: true
   accessModes: ["ReadWriteOnce"]
   storage: 20Gi
+  # Longhorn's cross-node attach/replica dance was flaky during tonight's
+  # node issues. Zot is pinned to a single node (nodeSelector above) anyway,
+  # so a simple node-local volume avoids that complexity entirely.
+  storageClassName: local-path
 
 mountConfig: true
 configFiles:

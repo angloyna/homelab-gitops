@@ -42,14 +42,19 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql
+          # Probe exec commands don't go through a shell, so k8s's $(VAR)
+          # substitution (which only applies to container command/args, not
+          # probes) never kicks in here -- pg_isready got called with a
+          # literal/empty -U value and fell through to the OS user ("root").
+          # Route through sh -c so normal env-var expansion applies instead.
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
             initialDelaySeconds: 15
             periodSeconds: 20
           resources:

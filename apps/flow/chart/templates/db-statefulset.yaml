@@ -47,6 +47,18 @@ spec:
           # probes) never kicks in here -- pg_isready got called with a
           # literal/empty -U value and fell through to the OS user ("root").
           # Route through sh -c so normal env-var expansion applies instead.
+          #
+          # startupProbe gives crash recovery / WAL replay room to finish
+          # (up to 5min) before liveness probing even begins -- without it,
+          # the tight liveness window below was killing postgres mid-recovery
+          # (exit 137) and forcing it to restart recovery from scratch,
+          # i.e. a self-inflicted crash loop.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
@@ -55,8 +67,8 @@ spec:
           livenessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
-            initialDelaySeconds: 15
             periodSeconds: 20
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.db.resources | nindent 12 }}
   volumeClaimTemplates:

@@ -2,7 +2,7 @@ dbName: flow_data
 dbServiceName: flow-db
 
 image:
-  registry: zot.zot.svc.cluster.local:5000
+  registry: 10.43.114.154:5000
   tag: dev
 
 existingSecret: flow-dev-secrets

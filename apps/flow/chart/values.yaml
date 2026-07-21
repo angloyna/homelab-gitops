@@ -1,5 +1,12 @@
 image:
-  registry: zot.zot.svc.cluster.local:5000
+  # Zot's ClusterIP, not its .svc.cluster.local DNS name -- kubelet/containerd
+  # pull images from the node's own network namespace using the node's own
+  # resolver (systemd-resolved etc), not CoreDNS, so *.svc.cluster.local
+  # names never resolve for image pulls (only inside pods, via the per-pod
+  # resolv.conf kubelet injects). ClusterIPs route via kube-proxy's iptables
+  # rules, which apply host-wide, so this works without depending on DNS.
+  # Update this if zot's Service is ever deleted/recreated (new ClusterIP).
+  registry: 10.43.114.154:5000
   tag: dev
   pullPolicy: IfNotPresent
 

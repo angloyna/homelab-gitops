@@ -2,7 +2,9 @@ dbName: flow_data
 dbServiceName: flow-db
 
 image:
-  registry: zot.zot.svc.cluster.local:5000
+  # Zot's ClusterIP, not its .svc.cluster.local DNS name -- see the note in
+  # apps/flow/chart/values.yaml for why (image pulls don't go through CoreDNS).
+  registry: 10.43.114.154:5000
   tag: dev
   pullPolicy: IfNotPresent
 

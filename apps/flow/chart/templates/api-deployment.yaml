@@ -33,8 +33,15 @@ spec:
           env:
             - name: PHOENIX_URL
               value: "http://{{ .Release.Name }}-realtime:4000"
+            # https, not http: Cloudflare Tunnel terminates TLS at the edge,
+            # so the browser's page origin -- and the Origin header it sends
+            # -- is https://<hostname>. Scheme is part of the origin, so the
+            # old http:// value never actually matched anything. (Requests
+            # from the frontend are same-origin once it stops hardcoding
+            # http://, at which point CORS won't apply to them at all; this
+            # value still matters for any genuine cross-origin caller.)
             - name: CORS_ORIGINS
-              value: "http://{{ .Values.hostname }}"
+              value: "https://{{ .Values.hostname }}"
           volumeMounts:
             - name: attachments
               mountPath: /data/attachments

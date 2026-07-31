@@ -6,6 +6,7 @@ metadata:
     {{- include "flow.labels" . | nindent 4 }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: "{{ .Release.Namespace }}-{{ .Release.Name }}-upgrade-insecure@kubernetescrd"
 spec:
   ingressClassName: traefik
   rules:

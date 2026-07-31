@@ -14,3 +14,31 @@ spec:
   stripPrefix:
     prefixes:
       - /public
+---
+# Cloudflare Tunnel terminates TLS at the edge, so the browser loads the page
+# over https:// while this cluster only ever speaks http:// (entrypoint: web,
+# and cloudflared's origin is http://traefik.kube-system:80). The frontend
+# bundle builds absolute API URLs with a hardcoded http:// scheme, e.g.
+# http://flow-dev.turdblossom.dev/auth/me -- an https page requesting an http
+# subresource, which Chrome kills as ERR_BLOCKED_BY_MIXED_CONTENT before the
+# request ever leaves the renderer.
+#
+# This header tells the browser to rewrite those http:// subresource requests
+# to https:// itself. Note Cloudflare's "Automatic HTTPS Rewrites" setting
+# does NOT cover this case -- it only rewrites URLs in HTML, not ones built
+# at runtime by JS (fetch/XHR).
+#
+# This is the band-aid, not the cure: the real fix is making the frontend use
+# relative URLs (/auth/me), which inherit the page scheme and work unchanged
+# under the tunnel, a port-forward, or locally. Drop this middleware once the
+# frontend image stops hardcoding the scheme.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-upgrade-insecure
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      Content-Security-Policy: "upgrade-insecure-requests"

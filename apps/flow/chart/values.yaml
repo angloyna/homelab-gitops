@@ -78,7 +78,7 @@ config:
   appTimezone: "America/Chicago"
   maxUploadBytes: "104857600"
   disableScheduler: "false"
-  devSkipLogin: "false"
+  devSkipLogin: "true"
   maxScanInputLength: "100"
   scanWorkerConcurrency: "10"
   bcExportDir: "/tmp/bc_exports"

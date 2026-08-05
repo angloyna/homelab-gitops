@@ -63,11 +63,16 @@ kubectl create secret generic bitwarden-access-token \
 
 Requirements for that machine account:
 
-- **Read-write access to the project.** ESO's Bitwarden provider documents
-  read-write; a read-only token is not sufficient.
 - **Explicitly granted access to project `006747b1-…`.** Bitwarden scopes
   machine accounts per project. A token without the grant fails with a bare
   `404 Resource not found`, which looks identical to a wrong project ID.
+- **"Can read" is enough.** ESO's provider page says to grant Read-Write, but
+  states it as a blanket note covering the whole provider — including
+  `PushSecret`, which writes secrets back to Bitwarden. This repo only ever
+  reads: `apps/flow-secrets/` defines a ClusterSecretStore and an
+  ExternalSecret and no PushSecret. Since this token bootstraps every other
+  credential in the cluster, grant the narrower permission. If a sync ever
+  fails with a permission error, widen it then.
 
 Verify a token before wiring it in — this prints secret **names** only:
 

@@ -1,5 +1,10 @@
 # Bitwarden coordinates for the flow-dev cluster deployment.
 # Opaque identifiers, not credentials -- the machine account token is the only
 # secret, and it is created by hand (see README.md).
-organizationID: 1ec78bad-12fa-48fb-8924-b4990181767e
-projectID: 006747b1-5f82-45f5-8ad5-b49a0130b72c
+#
+# Both confirmed from `bws project list` under the cluster's machine account:
+# the project object reports id=747cfdb0-… and organizationId=006747b1-….
+# Note there is a second, unrelated Bitwarden org that also contains a project
+# named "flow-staging" -- match on UUID, not on name.
+organizationID: 006747b1-5f82-45f5-8ad5-b49a0130b72c
+projectID: 747cfdb0-b4c8-4e5e-9922-dfedac5a40cb

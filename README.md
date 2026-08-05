@@ -113,6 +113,39 @@ kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deplo
 kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB_PASSWORD changed
 ```
 
+### DB_PASSWORD is special — rotating it takes two steps
+
+`POSTGRES_PASSWORD` is only read when Postgres initializes an **empty** data
+directory. For an existing database it is ignored completely: the password
+lives inside the database, not in the env var.
+
+So changing `DB_PASSWORD` in Bitwarden does **not** change the database's
+password. ESO updates the Secret, pods restart with the new value, and every
+one of them is rejected with:
+
+```
+asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "flow_user"
+```
+
+The failure is delayed and confusing, because pods that have not restarted yet
+keep working on the old credential. Change the database too:
+
+```bash
+# local socket auth is trusted inside the pod, so no old password needed.
+# note flow_user IS the superuser here -- there is no `postgres` role,
+# because the volume was initialized with POSTGRES_USER=flow_user.
+NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d)
+printf "ALTER USER flow_user WITH PASSWORD '%s';\n" "$NEW" \
+  | kubectl -n flow-dev exec -i flow-db-0 -- psql -U flow_user -d flow_data -q
+
+kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deploy/flow-realtime
+kubectl -n flow-dev delete job flow-migrations-dev   # let it re-run
+```
+
+This bit us during the initial migration: the cluster's Postgres had been
+initialized with a different password than the one in the Bitwarden project,
+so the first ESO sync broke every database client until the `ALTER USER` above.
+
 ## Gotchas
 
 **The migrations Job is named by image tag.** `flow-migrations-{{ .Values.image.tag }}`

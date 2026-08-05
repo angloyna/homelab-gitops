@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets
+  namespace: argocd
+  annotations:
+    # Wave -2: after cert-manager (needs its CRDs for the Certificate below),
+    # before flow-secrets (which needs ESO's ClusterSecretStore CRD).
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  # Three sources, not the usual two. The upstream chart does NOT ship the
+  # Issuer/Certificate that bitwarden-sdk-server needs, so the third source
+  # layers our own raw manifests into the same Application and namespace.
+  sources:
+    - repoURL: https://charts.external-secrets.io
+      chart: external-secrets
+      targetRevision: "2.8.0"
+      helm:
+        valueFiles:
+          - $values/apps/external-secrets/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/external-secrets/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

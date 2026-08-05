@@ -1,0 +1,81 @@
+# Bitwarden Secrets Manager -> Kubernetes Secret.
+#
+# The flow codebase moved to Bitwarden Secrets Manager, but only at DEPLOY
+# time: scripts/use_bitwarden.sh runs `bws secret list <project> --output env`
+# on the compose host and renders a plaintext .env. No application code is
+# Bitwarden-aware -- every service still just reads environment variables.
+#
+# So Kubernetes does not need the app to change. It needs something to
+# materialize the same env var names as a Secret, which is what External
+# Secrets Operator does here. This chart is the k8s equivalent of that shell
+# script.
+
+# --- Bitwarden coordinates -------------------------------------------------
+# Neither of these is a credential -- they are opaque identifiers, safe in git.
+# Set the real values in apps/flow-secrets/values.yaml.
+organizationID: ""
+projectID: ""
+
+# --- Access token ----------------------------------------------------------
+# The ONE secret that cannot come from Bitwarden (chicken-and-egg): the machine
+# account token used to talk to Bitwarden in the first place. Created by hand,
+# once. See the README.
+#
+# It lives in the external-secrets namespace rather than flow-dev so a single
+# token can serve future stores without copying it into every namespace. That
+# cross-namespace reference is also why this is a ClusterSecretStore and not a
+# namespaced SecretStore -- `namespace:` in auth.secretRef and caProvider is
+# only honoured for cluster-scoped stores.
+accessToken:
+  secretName: bitwarden-access-token
+  key: token
+  namespace: external-secrets
+
+# --- SDK server ------------------------------------------------------------
+# ESO cannot call the Rust Bitwarden SDK in-process, so it proxies through this
+# sidecar over HTTPS. The Service name is hardcoded upstream. The CA here is
+# the one cert-manager mints in apps/external-secrets/manifests/ -- caProvider
+# rather than a pasted caBundle so cert rotation needs no commit.
+sdkServer:
+  url: https://bitwarden-sdk-server.external-secrets.svc.cluster.local:9998
+  caSecretName: bitwarden-tls-certs
+  caSecretKey: ca.crt
+  caNamespace: external-secrets
+
+# How often ESO re-reads Bitwarden. Nothing restarts pods when the Secret
+# changes (no Reloader in this cluster), so a rotated credential reaches a
+# running pod only on its next restart. See the README.
+refreshInterval: 1h
+
+# --- Keys ------------------------------------------------------------------
+# Mirrors scripts/required-secrets.txt in the flow repo. Keep the two in sync:
+# that file gates compose deploys, this list gates the cluster.
+#
+# Enumerated deliberately rather than using dataFrom.find. The Bitwarden
+# provider's find ignores name/tag/path selectors and returns secrets keyed by
+# UUID, which would produce a Secret full of unusable env var names. Listing
+# them also means a key missing from Bitwarden fails loudly here instead of
+# silently producing a pod with an unset variable.
+#
+# Bitwarden secret name == env var name == key in the resulting Secret; there
+# is no mapping layer, exactly as `--output env` behaves for compose.
+secretKeys:
+  - DB_PASSWORD
+  - SECRET_KEY_BASE
+  - VAULT_PLUGIN_API_KEY
+  - VAULT_PASSWORD
+  - TENANT_ID
+  - AZURE_CLIENT_ID
+  - ENTRA_CLIENT_SECRET
+  - CLIENT_ID
+  - CLIENT_SECRET
+  - LINEAR_API_KEY
+  - LINEAR_WEBHOOK_SECRET
+  - PAYLOCITY_CLIENT_ID
+  - PAYLOCITY_CLIENT_SECRET
+  - PAYLOCITY_COMPANY_ID
+  - SLACK_WEBHOOK_URL
+
+# Name of the Secret this produces. Must match `existingSecret` in
+# apps/flow/values.yaml and apps/flow-migrations/values.yaml.
+targetSecretName: flow-dev-secrets

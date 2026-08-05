@@ -1,0 +1,99 @@
+# TLS for the bitwarden-sdk-server. ESO talks to it over HTTPS only, so
+# without these manifests the Bitwarden provider cannot work at all.
+#
+# WHY A CA CHAIN AND NOT ONE SELF-SIGNED CERT:
+# The chart mounts the secret with an explicit key list --
+#     tls.crt -> cert.pem, tls.key -> key.pem, ca.crt -> ca.pem
+# A Kubernetes secret volume that names a key which does not exist fails to
+# mount, and the pod never starts. cert-manager only writes `ca.crt` when the
+# certificate is issued by a *CA* issuer; a plain selfSigned issuer omits it.
+# So a single self-signed Certificate here would leave the sdk-server stuck on
+# "references non-existent secret key: ca.crt"
+# (external-secrets/external-secrets#4064). Hence: selfSigned -> root CA ->
+# CA issuer -> server cert.
+#
+# Nothing here is internet-facing; this is purely so one in-cluster pod can
+# talk to another over TLS. No ACME, no public trust required.
+---
+# Step 1: bootstrap issuer, used only to sign the root CA below.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: bitwarden-selfsigned
+  namespace: external-secrets
+  annotations:
+    # cert-manager's CRDs land in wave -3 but Argo dry-runs the whole manifest
+    # set up front; without this the very first sync fails on an unknown kind.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selfSigned: {}
+---
+# Step 2: the root CA itself. isCA gives us something that can sign, and its
+# secret is what makes ca.crt available downstream.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: bitwarden-ca
+  namespace: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  isCA: true
+  commonName: bitwarden-sdk-server-ca
+  secretName: bitwarden-ca-certs
+  duration: 87600h    # 10y -- rotating this means re-issuing the leaf too
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS8
+    size: 2048
+  issuerRef:
+    name: bitwarden-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+# Step 3: an issuer backed by that CA. Certificates it signs get ca.crt.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: bitwarden-ca-issuer
+  namespace: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  ca:
+    secretName: bitwarden-ca-certs
+---
+# Step 4: the server certificate the sdk-server actually presents.
+# secretName MUST be bitwarden-tls-certs -- the chart hardcodes it.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: bitwarden-tls-certs
+  namespace: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretName: bitwarden-tls-certs
+  duration: 8760h     # 1y, auto-renewed 30d out by cert-manager
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS8
+    size: 2048
+  # The Service name is fixed upstream, so these names are stable. ESO dials
+  # the fully-qualified one (see apps/flow-secrets/); the shorter forms and
+  # localhost are there for in-pod health checks.
+  dnsNames:
+    - bitwarden-sdk-server
+    - bitwarden-sdk-server.external-secrets
+    - bitwarden-sdk-server.external-secrets.svc
+    - bitwarden-sdk-server.external-secrets.svc.cluster.local
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+    - ::1
+  issuerRef:
+    name: bitwarden-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

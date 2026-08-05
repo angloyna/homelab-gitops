@@ -1,0 +1,19 @@
+# External Secrets Operator -- syncs the Bitwarden Secrets Manager project
+# into a real Kubernetes Secret. See apps/flow-secrets/ for the consumer.
+
+# ESO is written in Go, but the Bitwarden SDK is Rust and needs CGO, so ESO
+# cannot call it in-process. Instead it shells out over HTTPS to this sidecar,
+# which wraps the Rust SDK in a small REST service on :9998. Without it the
+# Bitwarden provider simply does not work.
+#
+# The Service name is hardcoded to `bitwarden-sdk-server` upstream so the
+# endpoint is derivable -- do not set namespaceOverride, or the URL in
+# apps/flow-secrets/ has to change with it.
+bitwarden-sdk-server:
+  enabled: true
+
+# Chart defaults already give us what we need and are left alone deliberately:
+#   installCRDs: true                  (master switch, default true)
+#   crds.createClusterSecretStore: true  (we use a ClusterSecretStore, not a
+#                                         namespaced SecretStore -- see the
+#                                         comment in apps/flow-secrets/chart)

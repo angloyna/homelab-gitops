@@ -1,0 +1,15 @@
+# cert-manager exists here for exactly one reason: External Secrets Operator's
+# Bitwarden provider talks to a bitwarden-sdk-server sidecar that MUST serve
+# HTTPS, and that chart expects a TLS secret named bitwarden-tls-certs. A
+# self-signed issuer covers it -- nothing here faces the internet, so no ACME
+# and no Let's Encrypt account. See apps/external-secrets/manifests/.
+
+# The chart defaults this to false. Without it the CRDs never land and the
+# Certificate/Issuer in the external-secrets app has nothing to validate
+# against. (There is also a legacy top-level `installCRDs` key -- crds.enabled
+# is the current one; setting the old one does nothing useful in v1.21.)
+crds:
+  enabled: true
+  # Leave Helm's "resource-policy: keep" annotation on, so uninstalling the
+  # chart cannot garbage-collect every Certificate and Issuer in the cluster.
+  keep: true

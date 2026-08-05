@@ -30,8 +30,8 @@ spec:
             # ecto:// URL, not split DB_* vars -- different from api/api-public.
             - name: DB_USER
               valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.existingSecret }}
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
                   key: DB_USER
             - name: DB_PASSWORD
               valueFrom:

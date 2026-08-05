@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    # Wave -3: everything below has to exist before the Bitwarden secret sync
+    # can work. cert-manager -> external-secrets (needs a Certificate for the
+    # bitwarden-sdk-server) -> flow-secrets (needs ESO's CRDs) -> flow.
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: "v1.21.1"
+      helm:
+        valueFiles:
+          - $values/apps/cert-manager/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -17,9 +17,14 @@ image:
 
 hostname: flow-dev.turdblossom.dev
 
-# Name of a Secret (created out-of-band, not by this chart) holding all the
-# real secrets -- DB_USER, DB_PASSWORD, SECRET_KEY_BASE, integration API
-# keys, etc.
+# Name of a Secret holding the real credentials -- DB_PASSWORD,
+# SECRET_KEY_BASE, integration API keys. No longer created by hand: the
+# flow-secrets app (sync wave -1) has External Secrets Operator build it from
+# the Bitwarden Secrets Manager project. This chart still just consumes it by
+# name, so nothing here had to change.
+#
+# DB_USER is deliberately NOT in it any more -- it is config, not a
+# credential, and now comes from the ConfigMap. See README.md.
 existingSecret: flow-dev-secrets
 
 replicaCount: 1
@@ -30,6 +35,11 @@ nodeSelector: {}
 db:
   image: postgis/postgis:18-3.6
   name: flow_data
+  # Not a secret, so it does NOT come from Bitwarden -- it is absent from
+  # scripts/required-secrets.txt and lives in the committed .env.production /
+  # .env.staging on the compose hosts. It used to ride along in the
+  # hand-made flow-dev-secrets; now it comes from the ConfigMap instead.
+  user: flow_user
   storage: 20Gi
   resources:
     requests:
@@ -75,6 +85,19 @@ frontend:
 
 # Non-secret config -- rendered into a ConfigMap and consumed via envFrom.
 config:
+  # These three used to live in the hand-made flow-dev-secrets even though
+  # none is a credential. The Bitwarden project only holds the 15 names in
+  # scripts/required-secrets.txt, so once ESO owns the Secret they would
+  # simply vanish -- they belong here instead.
+  #
+  # NOTE: both webhook URLs currently point at scorpio.dev, the staging
+  # COMPOSE host, not at this cluster's flow-dev.turdblossom.dev. Preserved
+  # verbatim from the live Secret so this change alters nothing at runtime;
+  # retarget deliberately if that is not what you want.
+  bcWebhookUrl: "https://scorpio.dev"
+  linearWebhookUrl: "https://scorpio.dev"
+  bcDeepLinkBase: "https://businesscentral.dynamics.com/?company=Spike%20Electric%20Controls"
+
   appTimezone: "America/Chicago"
   maxUploadBytes: "104857600"
   disableScheduler: "false"

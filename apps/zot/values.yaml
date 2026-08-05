@@ -2,10 +2,11 @@ service:
   type: ClusterIP
   port: 5000
 
-# louise has had intermittent network/reboot flakiness; pin to the
-# control-plane node instead since it's been stable.
-nodeSelector:
-  kubernetes.io/hostname: tina
+# Deliberately unpinned. zot must be able to move: flow uses
+# imagePullPolicy: Always against zot's ClusterIP, so pinning the registry to
+# the same node as everything else means a node reboot leaves every flow pod
+# in ImagePullBackOff. The PVC is Longhorn with a replica on each node, so
+# rescheduling re-attaches cleanly.
 
 persistence: true
 pvc:

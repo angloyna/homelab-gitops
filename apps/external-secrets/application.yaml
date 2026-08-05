@@ -34,3 +34,13 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # Required, not optional. ArgoCD's default client-side apply stores the
+      # whole resource in the last-applied-configuration annotation, and the
+      # SecretStore/ClusterSecretStore CRDs embed a schema for every provider
+      # ESO supports -- well past the 262144-byte annotation ceiling:
+      #   CustomResourceDefinition "clustersecretstores.external-secrets.io"
+      #   is invalid: metadata.annotations: Too long
+      # Those two CRDs silently fail to install while the other ~23 succeed,
+      # so the only visible symptom is `no resource type clustersecretstores`.
+      # Server-side apply writes no such annotation.
+      - ServerSideApply=true

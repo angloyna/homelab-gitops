@@ -30,8 +30,14 @@ controllerServiceAccount:
 # asking for `self-hosted` queues forever with no error anywhere.
 runnerScaleSetName: "flow-k8s"
 
-# One warm runner so the first job of a PR skips the pod cold start.
-minRunners: 1
+# Warm runners, so a job does not wait on a pod cold start (image pull, dind
+# startup probe -- 30-90s, and minutes the first time a node pulls the runner
+# image).
+#
+# Two rather than one because runners are ephemeral: a pod takes exactly one
+# job and is then destroyed, so with a single warm runner every job after the
+# first lands in the gap while its replacement is still starting.
+minRunners: 2
 # ci-checks.yml fans out to 7 parallel jobs; 8 leaves a little headroom.
 # Each runner is two containers on a two-node cluster -- raising this much
 # further will contend with flow itself for node capacity.
@@ -67,7 +73,16 @@ template:
       # container here -- containerMode injects it, and redeclaring it drops
       # the socket and volume wiring that makes the bind mount above work.
       - name: runner
-        image: ghcr.io/actions/actions-runner:latest
+        # Pinned deliberately. Kubernetes defaults imagePullPolicy to Always
+        # for the `latest` tag and IfNotPresent for any other, so `:latest`
+        # meant a registry round-trip before every single runner pod started --
+        # and a silent runner upgrade whenever GitHub republished the tag.
+        # A version tag makes warm nodes skip the registry entirely and turns
+        # upgrades into a commit.
+        #
+        # 2.336.0 was digest-identical to `latest` when pinned, so this changed
+        # nothing that was running at the time.
+        image: ghcr.io/actions/actions-runner:2.336.0
         command: ["/home/runner/run.sh"]
         resources:
           requests:

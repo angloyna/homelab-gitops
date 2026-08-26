@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+  annotations:
+    # Wave 2: nothing depends on this the way flow's chain does, but it has to
+    # be Healthy before arc-runners (3). That app's only resource is an
+    # AutoscalingRunnerSet -- a CRD this chart installs -- so the reverse order
+    # fails dry-run on an unknown kind.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    # GitHub publishes ARC to a container registry only; there is no
+    # https:// Helm repo for it, so this is the one OCI source in the repo.
+    # The URL carries NO oci:// prefix -- ArgoCD adds it, and including it
+    # fails to resolve. The registry also needs a repository entry with
+    # enableOCI before this will sync at all; see README.
+    - repoURL: ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set-controller
+      targetRevision: "0.14.2"
+      helm:
+        valueFiles:
+          - $values/apps/arc-controller/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-systems
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The same failure external-secrets hit. All four ARC CRDs embed a full
+      # PodSpec schema for the runner template, and they are enormous:
+      #   autoscalingrunnersets   628505 B
+      #   autoscalinglisteners    317676 B
+      #   ephemeralrunners        315968 B
+      #   ephemeralrunnersets     315878 B
+      # all far past the 262144-byte last-applied-configuration annotation
+      # ceiling that client-side apply writes. Without this they silently fail
+      # to install while the rest of the chart succeeds, and the only symptom
+      # is `no resource type autoscalingrunnersets` when arc-runners syncs.
+      - ServerSideApply=true

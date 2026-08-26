@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-charts
+  namespace: argocd
+  annotations:
+    # Wave 1: must land before arc-controller (2), which cannot resolve its
+    # chart until this repository entry exists. No dependencies of its own.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  # Raw manifest, no chart -- this configures ArgoCD itself rather than
+  # deploying a workload, so it targets the argocd namespace.
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/arc-charts/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

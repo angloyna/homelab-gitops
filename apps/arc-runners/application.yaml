@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners
+  namespace: argocd
+  annotations:
+    # Wave 3: the AutoscalingRunnerSet this creates is a CRD that
+    # arc-controller (2) installs, so it cannot sync before that is Healthy.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  # The usual two sources. The `github-pat` Secret this chart reads is NOT
+  # managed here -- it is created by hand (see README), deliberately outside
+  # both git and Bitwarden. ArgoCD never sees it, so `prune` cannot remove it.
+  sources:
+    - repoURL: ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set
+      targetRevision: "0.14.2"
+      helm:
+        valueFiles:
+          - $values/apps/arc-runners/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Runner pods need a privileged dind sidecar. k3s does not enforce a
+    # restricted Pod Security level by default, so this is belt-and-braces --
+    # but it means the namespace stays correct if a default is ever set
+    # cluster-wide, rather than every runner pod suddenly failing admission.
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,22 @@
+# Actions Runner Controller -- the operator half.
+#
+# It watches AutoscalingRunnerSet resources (arc-runners defines the only one)
+# and, for each, runs a listener that long-polls GitHub for queued jobs and
+# creates one ephemeral runner Pod per job. The controller itself does no work
+# per job, so it stays small.
+#
+# Stock values are deliberate: everything that describes *our* runners --
+# scale, container mode, node placement -- belongs to the scale set, in
+# apps/arc-runners/values.yaml, not here.
+
+# Single replica. The chart does not support leader election across replicas,
+# and a brief gap during a rollout only delays job pickup; it does not lose
+# jobs, since the queue lives on GitHub's side.
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi

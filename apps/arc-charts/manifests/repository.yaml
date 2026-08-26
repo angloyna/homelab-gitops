@@ -1,0 +1,31 @@
+# Registers GitHub's ARC chart registry with ArgoCD.
+#
+# ArgoCD will not pull a Helm chart from a container registry until that
+# registry is a known repository, even a public one. Without this, both
+# arc-controller and arc-runners fail to sync with a repository-not-found
+# error naming ghcr.io/... -- which says nothing about OCI, and is the
+# confusing part.
+#
+# WHY THIS IS IN GIT AND THE OTHER TWO CREDENTIALS ARE NOT:
+# there is no credential here. The registry is public, so this Secret holds
+# only configuration -- a URL and a pair of flags. The ESO bootstrap token and
+# the runners' github-pat are real secrets and stay hand-applied.
+#
+# It is a Secret rather than a ConfigMap because that is the only shape ArgoCD
+# reads repository config from; the `secret-type: repository` label is what
+# makes it visible. Picked up dynamically -- no ArgoCD restart needed.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: arc-charts
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: arc-charts
+  type: helm
+  # No oci:// prefix, matching the repoURL in both arc Applications. ArgoCD
+  # adds the scheme; including it here fails to match, and the Applications
+  # then behave as though this entry did not exist.
+  url: ghcr.io/actions/actions-runner-controller-charts
+  enableOCI: "true"

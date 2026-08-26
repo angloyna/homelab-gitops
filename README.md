@@ -5,19 +5,26 @@ worker). Everything lives under `apps/`; `apps/root/application.yaml` discovers
 each app by globbing `*/application.yaml`, so adding a directory with an
 `application.yaml` is all it takes to register one.
 
-Helm only — no Kustomize. Two shapes are in use:
+Helm only — no Kustomize. Three shapes are in use:
 
 - **upstream chart + local values** (`cert-manager`, `external-secrets`,
   `longhorn`, `zot`): a multi-source Application, values referenced through a
   `$values` ref source.
 - **in-repo chart** (`flow`, `flow-migrations`, `flow-secrets`): `path:` points
   at `apps/<name>/chart`, with `valueFiles: [../values.yaml]`.
+- **OCI chart + local values** (`arc-controller`, `arc-runners`): as the first
+  shape, but the chart comes from a container registry. GitHub publishes ARC
+  nowhere else. `repoURL` takes **no** `oci://` prefix, and the registry must
+  be registered as a repository first — `arc-charts` does that.
 
 ## Secrets
 
-Secrets come from **Bitwarden Secrets Manager**, synced into the cluster by
-External Secrets Operator. Nothing except the bootstrap token below is created
-by hand, and no secret material is committed.
+Application secrets come from **Bitwarden Secrets Manager**, synced into the
+cluster by External Secrets Operator. No secret material is committed.
+
+Two credentials are created by hand and belong to neither git nor Bitwarden:
+the ESO bootstrap token below, and the GitHub PAT the CI runners use (see
+[CI runners](#ci-runners)).
 
 ### How it fits together
 
@@ -48,8 +55,11 @@ Healthy before starting the next:
 | `-1` | `flow-secrets` | creates `flow-dev-secrets` |
 | `0`  | `flow-migrations` | Flyway needs `DB_PASSWORD` |
 | `1`  | `flow` | needs the whole Secret |
+| `1`  | `arc-charts` | registers the OCI registry the two below pull from |
+| `2`  | `arc-controller` | installs the CRDs `arc-runners` is made of |
+| `3`  | `arc-runners` | needs those CRDs |
 
-### The one manual step
+### The bootstrap secret
 
 The machine account token is the single chicken-and-egg secret: it is what
 authenticates to Bitwarden, so it cannot come *from* Bitwarden. Create it once,
@@ -92,6 +102,12 @@ Bitwarden provider ignores find selectors and returns secrets keyed by UUID —
 which would produce a Secret full of unusable environment variable names.
 Enumerating also means a key missing from Bitwarden fails loudly at sync
 instead of silently leaving a variable unset.
+
+The CI runners' GitHub PAT is deliberately **not** in that list, and not in
+Bitwarden at all. It is not a flow environment variable — nothing in the
+application reads it — and `flow-dev-secrets` is `envFrom`'d into every api
+pod, so adding it there would hand every one of them a credential that can
+administer the GitHub repo. See [CI runners](#ci-runners).
 
 **Anything that is not a credential belongs in the ConfigMap, not Bitwarden.**
 `DB_USER`, `BC_WEBHOOK_URL`, `LINEAR_WEBHOOK_URL`, and `BC_DEEP_LINK_BASE` are
@@ -145,6 +161,96 @@ kubectl -n flow-dev delete job flow-migrations-dev   # let it re-run
 This bit us during the initial migration: the cluster's Postgres had been
 initialized with a different password than the one in the Bitwarden project,
 so the first ESO sync broke every database client until the `ALTER USER` above.
+
+## CI runners
+
+`arc-controller` + `arc-runners` run GitHub Actions self-hosted runners for
+**spike-electric/flow**, replacing GitHub-hosted `ubuntu-latest` for the seven
+jobs in that repo's `.github/workflows/ci-checks.yml`. One ephemeral Pod per
+queued job, destroyed when the job ends.
+
+Workflows select the pool with **`runs-on: flow-k8s`** — the
+`runnerScaleSetName` in `apps/arc-runners/values.yaml`. Runner scale sets match
+on that name *only*; they do not register the legacy `self-hosted` label, so a
+job asking for `self-hosted` sits in "Waiting for a runner" forever with no
+error anywhere. That is the first thing to check when a job never starts.
+
+Runners are **repo-scoped**, not org-scoped: only this one repo can schedule
+work onto the cluster. Since runner pods contain a privileged dind sidecar,
+widening that to the org would let any repo in it run privileged containers
+here.
+
+### The one manual step
+
+**Create the `github-pat` Secret.** A classic PAT with the `repo` scope,
+created by an account with **admin** on `spike-electric/flow` — registering
+self-hosted runners is an admin-level operation.
+
+This one stays out of Bitwarden on purpose. It is a CI credential, not an
+application credential: nothing flow runs ever reads it, and keeping it out of
+the ESO path means the operator that bootstraps every app secret has no route
+to a token that can administer the repo.
+
+The namespace must exist first. ArgoCD creates it on first sync, or:
+
+```bash
+kubectl create namespace arc-runners
+
+kubectl create secret generic github-pat --namespace arc-runners \
+  --from-literal=github_token='ghp_…'
+```
+
+The key must be exactly `github_token` — the chart hardcodes it. Nothing in
+this repo manages this Secret, so `prune` will not remove it, and ArgoCD will
+not recreate it if it is deleted: the listener just crash-loops until it is
+back. To rotate, `kubectl delete secret` and recreate, then restart the
+listener so it re-reads:
+
+```bash
+kubectl -n arc-runners delete pod -l actions.github.com/scale-set-name=flow-k8s
+```
+
+Set a real expiry and a calendar reminder. The failure mode is silent: when the
+token expires, runners simply stop registering and jobs queue with nothing
+logged in the cluster.
+
+### Verifying
+
+```bash
+kubectl -n arc-systems rollout status deploy/arc-controller-gha-rs-controller
+kubectl -n arc-runners get secret github-pat           # must exist first
+kubectl -n arc-runners get pods                        # one idle runner (2/2)
+```
+
+`flow-k8s` should appear under the repo's Settings → Actions → Runners. During
+a run, watch pods come and go, and read either container:
+
+```bash
+kubectl -n arc-runners get pods -w
+kubectl -n arc-runners logs <pod> -c dind      # dockerd startup
+kubectl -n arc-runners logs <pod> -c runner    # job output
+```
+
+A few minutes after a run, pod count should be back to 1 with no `Completed` or
+`Error` leftovers.
+
+### Known rough edges
+
+- **Toolchains download on every job.** The runner image carries no tool cache,
+  so `setup-python`, `setup-node`, and `setup-beam` fetch and install each run.
+  This is the main reason a job can be slower here than on `ubuntu-latest`. The
+  fix, if it becomes painful, is a custom runner image with the toolchains
+  baked in — pushed to `zot`, which is already in the cluster.
+- **`erlef/setup-beam` is the likeliest first failure.** It wants prebuilt
+  OTP/Elixir matched to the host Ubuntu plus libs a minimal image may not
+  carry. If `lint-realtime` alone fails while the others pass, that is why.
+- **Docker images re-pull every job.** `/var/lib/docker` is an emptyDir, so
+  postgis and flyway are pulled fresh each time. Tolerable on a LAN; `zot` as a
+  pull-through cache is the fix if it is not.
+- **The runner image is minimal and non-root.** No `psql`, no `sudo` to install
+  one. Workflow steps needing a client tool must `docker run` it — which is why
+  ci-checks.yml creates its test database through the postgis image rather than
+  calling `psql` directly.
 
 ## Gotchas
 

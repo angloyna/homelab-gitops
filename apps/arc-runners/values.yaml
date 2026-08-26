@@ -1,0 +1,78 @@
+# Self-hosted GitHub Actions runners for spike-electric/flow.
+#
+# One ephemeral Pod per queued job, destroyed when the job ends -- nothing
+# persists between jobs. Replaces GitHub-hosted `ubuntu-latest` for the seven
+# jobs in that repo's .github/workflows/ci-checks.yml.
+
+githubConfigUrl: "https://github.com/spike-electric/flow"
+
+# Repo-scoped, not org-scoped: only this repo's workflows can schedule work
+# onto the cluster. Widening it to the org would let any repo there run
+# privileged containers here.
+#
+# Named here, created by hand -- this Secret is the one credential in the
+# cluster that comes from neither git nor Bitwarden. Nothing in this repo
+# manages it, which also means ArgoCD's `prune` cannot delete it, and a
+# rotation is a kubectl command rather than a commit. See README.
+githubConfigSecret: github-pat
+
+# Stated explicitly rather than left to the chart's label-based discovery of
+# the controller, which is a live-cluster lookup and also makes the chart
+# unrenderable by `helm template`. The name is release-derived: ArgoCD sets the
+# Helm release name from the Application name, so apps/arc-controller yields
+# `arc-controller-gha-rs-controller`. Renaming that Application breaks this.
+controllerServiceAccount:
+  name: arc-controller-gha-rs-controller
+  namespace: arc-systems
+
+# What `runs-on:` must say in ci-checks.yml. Runner scale sets match on this
+# name ONLY -- they do not register the legacy `self-hosted` label, so a job
+# asking for `self-hosted` queues forever with no error anywhere.
+runnerScaleSetName: "flow-k8s"
+
+# One warm runner so the first job of a PR skips the pod cold start.
+minRunners: 1
+# ci-checks.yml fans out to 7 parallel jobs; 8 leaves a little headroom.
+# Each runner is two containers on a two-node cluster -- raising this much
+# further will contend with flow itself for node capacity.
+maxRunners: 8
+
+# dind, not kubernetes mode. The integration-tests job uses both a `services:`
+# postgis container and a `docker run` of flyway, and kubernetes mode supports
+# neither. This makes the chart inject a privileged docker:dind sidecar, an
+# init-dind-externals initContainer, and the work/dind-sock/dind-externals
+# volumes.
+#
+# Two consequences worth knowing before editing that workflow:
+#   - runner and dind share a network namespace, which is why the service
+#     container answers on localhost:5432 and why flyway's --network host
+#     reaches the same Postgres.
+#   - bind mounts are resolved by dockerd inside the dind sidecar, not by the
+#     runner. That normally breaks silently; it works here only because the
+#     chart mounts the `work` volume at /home/runner/_work in BOTH containers,
+#     so ${{ github.workspace }} means the same path in each.
+containerMode:
+  type: "dind"
+
+template:
+  spec:
+    # Arch, not hostname -- this is not the node pinning the README warns
+    # about. The postgis and flyway images and the setup-beam toolchain
+    # downloads are amd64, so an arm64 node joining later must not start
+    # silently picking up jobs it cannot run.
+    nodeSelector:
+      kubernetes.io/arch: amd64
+    containers:
+      # Only the runner container is overridden. Do NOT declare the `dind`
+      # container here -- containerMode injects it, and redeclaring it drops
+      # the socket and volume wiring that makes the bind mount above work.
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"

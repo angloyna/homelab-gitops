@@ -3,7 +3,7 @@ dbServiceName: flow-db
 # Deliberately duplicated from apps/flow/chart/values.yaml (db.user) rather
 # than read from the flow-config ConfigMap. This chart syncs at wave 0 and the
 # flow chart that renders flow-config syncs at wave 1, so that ConfigMap does
-# not exist yet when this Job runs. DB_PASSWORD still comes from the Secret,
+# not exist yet when this Job runs. DB__PASSWORD still comes from the Secret,
 # which ESO creates at wave -1.
 dbUser: flow_user
 
@@ -17,7 +17,7 @@ image:
 
 # Same Secret used by the main flow chart, created by the flow-secrets app at
 # sync wave -1 -- before this chart's wave 0, so it exists by the time the
-# Flyway Job runs. Only DB_PASSWORD is read from it now. See README.md.
+# Flyway Job runs. Only DB__PASSWORD is read from it now. See README.md.
 existingSecret: flow-dev-secrets
 
 resources:

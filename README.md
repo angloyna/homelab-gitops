@@ -41,8 +41,8 @@ bitwarden-sdk-server  ──HTTPS──▶  External Secrets Operator
                       ┌───────────────────┴───────────────────┐
                       ▼                                       ▼
         flow: api, api-public (envFrom),          flow-migrations: Flyway Job
-        realtime + db (SECRET_KEY_BASE,           (DB_PASSWORD)
-        DB_PASSWORD)
+        realtime + db (SECRET_KEY_BASE,           (DB__PASSWORD)
+        DB__PASSWORD)
 ```
 
 Sync waves order the bootstrap, and ArgoCD waits for each wave to report
@@ -53,7 +53,7 @@ Healthy before starting the next:
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
 | `-1` | `flow-secrets` | creates `flow-dev-secrets` |
-| `0`  | `flow-migrations` | Flyway needs `DB_PASSWORD` |
+| `0`  | `flow-migrations` | Flyway needs `DB__PASSWORD` |
 | `1`  | `flow` | needs the whole Secret |
 | `1`  | `arc-charts` | registers the OCI registry the two below pull from |
 | `2`  | `arc-controller` | installs the CRDs `arc-runners` is made of |
@@ -110,8 +110,8 @@ pod, so adding it there would hand every one of them a credential that can
 administer the GitHub repo. See [CI runners](#ci-runners).
 
 **Anything that is not a credential belongs in the ConfigMap, not Bitwarden.**
-`DB_USER`, `BC_WEBHOOK_URL`, `LINEAR_WEBHOOK_URL`, and `BC_DEEP_LINK_BASE` are
-config and live in `apps/flow/chart/templates/configmap.yaml`. `DB_PASSWORD` is
+`DB__USER`, `BC_WEBHOOK_URL`, `LINEAR__WEBHOOK_URL`, and `BC___DEEP_LINK_BASE` are
+config and live in `apps/flow/chart/templates/configmap.yaml`. `DB__PASSWORD` is
 a credential and comes from Bitwarden. Adding a non-secret to the Bitwarden
 project works but muddies the boundary.
 
@@ -126,16 +126,16 @@ running pod on its next restart. Force it:
 
 ```bash
 kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deploy/flow-realtime
-kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB_PASSWORD changed
+kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB__PASSWORD changed
 ```
 
-### DB_PASSWORD is special — rotating it takes two steps
+### DB__PASSWORD is special — rotating it takes two steps
 
 `POSTGRES_PASSWORD` is only read when Postgres initializes an **empty** data
 directory. For an existing database it is ignored completely: the password
 lives inside the database, not in the env var.
 
-So changing `DB_PASSWORD` in Bitwarden does **not** change the database's
+So changing `DB__PASSWORD` in Bitwarden does **not** change the database's
 password. ESO updates the Secret, pods restart with the new value, and every
 one of them is rejected with:
 
@@ -150,7 +150,7 @@ keep working on the old credential. Change the database too:
 # local socket auth is trusted inside the pod, so no old password needed.
 # note flow_user IS the superuser here -- there is no `postgres` role,
 # because the volume was initialized with POSTGRES_USER=flow_user.
-NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d)
+NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB__PASSWORD}' | base64 -d)
 printf "ALTER USER flow_user WITH PASSWORD '%s';\n" "$NEW" \
   | kubectl -n flow-dev exec -i flow-db-0 -- psql -U flow_user -d flow_data -q
 

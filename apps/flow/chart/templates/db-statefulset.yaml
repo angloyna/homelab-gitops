@@ -27,18 +27,18 @@ spec:
             - containerPort: 5432
               name: postgres
           env:
-            # DB_USER comes from the ConfigMap, not the Secret -- the Bitwarden
-            # project holds DB_PASSWORD but not DB_USER (it is not a credential).
+            # DB__USER comes from the ConfigMap, not the Secret -- the Bitwarden
+            # project holds DB__PASSWORD but not DB__USER (it is not a credential).
             - name: POSTGRES_USER
               valueFrom:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-config
-                  key: DB_USER
+                  key: DB__USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
-                  key: DB_PASSWORD
+                  key: DB__PASSWORD
             - name: POSTGRES_DB
               value: {{ .Values.db.name | quote }}
           volumeMounts:

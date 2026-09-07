@@ -60,21 +60,20 @@ refreshInterval: 1h
 # Bitwarden secret name == env var name == key in the resulting Secret; there
 # is no mapping layer, exactly as `--output env` behaves for compose.
 secretKeys:
-  - DB_PASSWORD
-  - SECRET_KEY_BASE
-  - VAULT_PLUGIN_API_KEY
-  - VAULT_PASSWORD
-  - TENANT_ID
-  - AZURE_CLIENT_ID
-  - ENTRA_CLIENT_SECRET
-  - CLIENT_ID
-  - CLIENT_SECRET
-  - LINEAR_API_KEY
-  - LINEAR_WEBHOOK_SECRET
-  - PAYLOCITY_CLIENT_ID
-  - PAYLOCITY_CLIENT_SECRET
-  - PAYLOCITY_COMPANY_ID
-  - SLACK_WEBHOOK_URL
+  - DB__PASSWORD
+  - APP__SECRET_KEY_BASE
+  - VAULT__PLUGIN_API_KEY
+  - AZURE__TENANT_ID
+  - AZURE__CLIENT_ID
+  - AZURE__ENTRA_CLIENT_SECRET
+  - BC__CLIENT_ID
+  - BC__CLIENT_SECRET
+  - LINEAR__API_KEY
+  - LINEAR__WEBHOOK_SECRET
+  - PAYLOCITY__CLIENT_ID
+  - PAYLOCITY__CLIENT_SECRET
+  - PAYLOCITY__COMPANY_ID
+  - SLACK__WEBHOOK_URL
 
 # Name of the Secret this produces. Must match `existingSecret` in
 # apps/flow/values.yaml and apps/flow-migrations/values.yaml.

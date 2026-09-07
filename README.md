@@ -110,7 +110,7 @@ pod, so adding it there would hand every one of them a credential that can
 administer the GitHub repo. See [CI runners](#ci-runners).
 
 **Anything that is not a credential belongs in the ConfigMap, not Bitwarden.**
-`DB_USER`, `BC_WEBHOOK_URL`, `LINEAR_WEBHOOK_URL`, and `BC_DEEP_LINK_BASE` are
+`DB__USER`, `BC_WEBHOOK_URL`, `LINEAR__WEBHOOK_URL`, and `BC___DEEP_LINK_BASE` are
 config and live in `apps/flow/chart/templates/configmap.yaml`. `DB__PASSWORD` is
 a credential and comes from Bitwarden. Adding a non-secret to the Bitwarden
 project works but muddies the boundary.
@@ -126,7 +126,7 @@ running pod on its next restart. Force it:
 
 ```bash
 kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deploy/flow-realtime
-kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB_PASSWORD changed
+kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB__PASSWORD changed
 ```
 
 ### DB__PASSWORD is special — rotating it takes two steps
@@ -150,7 +150,7 @@ keep working on the old credential. Change the database too:
 # local socket auth is trusted inside the pod, so no old password needed.
 # note flow_user IS the superuser here -- there is no `postgres` role,
 # because the volume was initialized with POSTGRES_USER=flow_user.
-NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d)
+NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB__PASSWORD}' | base64 -d)
 printf "ALTER USER flow_user WITH PASSWORD '%s';\n" "$NEW" \
   | kubectl -n flow-dev exec -i flow-db-0 -- psql -U flow_user -d flow_data -q
 

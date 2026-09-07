@@ -36,7 +36,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
-                  key: DB_PASSWORD
+                  key: DB__PASSWORD
             - name: FLYWAY_CONNECT_RETRIES
               value: "10"
             - name: FLYWAY_CONNECT_RETRIES_INTERVAL

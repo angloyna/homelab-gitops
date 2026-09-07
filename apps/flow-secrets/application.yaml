@@ -6,7 +6,7 @@ metadata:
   annotations:
     # Wave -1: after external-secrets (-2) provides the CRDs and the SDK
     # server, and before flow-migrations (0), whose Flyway Job reads
-    # DB_PASSWORD out of the Secret this app creates. ArgoCD waits for each
+    # DB__PASSWORD out of the Secret this app creates. ArgoCD waits for each
     # wave to go Healthy, and it ships a health check for ExternalSecret, so
     # wave 0 does not start until the sync has actually succeeded.
     argocd.argoproj.io/sync-wave: "-1"

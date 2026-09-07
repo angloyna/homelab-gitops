@@ -5,28 +5,26 @@ metadata:
   labels:
     {{- include "flow.labels" . | nindent 4 }}
 data:
-  APP_TIMEZONE: {{ .Values.config.appTimezone | quote }}
-  MAX_UPLOAD_BYTES: {{ .Values.config.maxUploadBytes | quote }}
-  DISABLE_SCHEDULER: {{ .Values.config.disableScheduler | quote }}
-  DEV_SKIP_LOGIN: {{ .Values.config.devSkipLogin | quote }}
+  APP__TIMEZONE: {{ .Values.config.appTimezone | quote }}
+  UPLOADS__MAX_BYTES: {{ .Values.config.maxUploadBytes | quote }}
+  SCHEDULER__DISABLED: {{ .Values.config.disableScheduler | quote }}
+  APP__DEV_SKIP_LOGIN: {{ .Values.config.devSkipLogin | quote }}
   VITE_DEV_SKIP_LOGIN: {{ .Values.config.devSkipLogin | quote }}
-  MAX_SCAN_INPUT_LENGTH: {{ .Values.config.maxScanInputLength | quote }}
-  SCAN_WORKER_CONCURRENCY: {{ .Values.config.scanWorkerConcurrency | quote }}
-  BC_EXPORT_DIR: {{ .Values.config.bcExportDir | quote }}
-  ENVIRONMENT: {{ .Values.config.bcEnvironment | quote }}
-  PAYLOCITY_BASE_URL: {{ .Values.config.paylocityBaseUrl | quote }}
-  PAYLOCITY_EMPLOYEE_SYNC_SOURCE: {{ .Values.config.paylocityEmployeeSyncSource | quote }}
-  PAYLOCITY_PUNCH_ANOMALY_HOURS: {{ .Values.config.paylocityPunchAnomalyHours | quote }}
-  PAYLOCITY_PUNCH_CAP_HOURS: {{ .Values.config.paylocityPunchCapHours | quote }}
-  PAYLOCITY_PUNCH_SYNC_DAYS: {{ .Values.config.paylocityPunchSyncDays | quote }}
-  BC_WEBHOOK_URL: {{ .Values.config.bcWebhookUrl | quote }}
-  LINEAR_WEBHOOK_URL: {{ .Values.config.linearWebhookUrl | quote }}
-  BC_DEEP_LINK_BASE: {{ .Values.config.bcDeepLinkBase | quote }}
-  ATTACHMENTS_DIR: "/data/attachments"
+  SCAN__WORKER_CONCURRENCY: {{ .Values.config.scanWorkerConcurrency | quote }}
+  BC__ENVIRONMENT: {{ .Values.config.bcEnvironment | quote }}
+  PAYLOCITY__BASE_URL: {{ .Values.config.paylocityBaseUrl | quote }}
+  PAYLOCITY__EMPLOYEE_SYNC__SOURCE: {{ .Values.config.paylocityEmployeeSyncSource | quote }}
+  PAYLOCITY__PUNCH__ANOMALY_HOURS: {{ .Values.config.paylocityPunchAnomalyHours | quote }}
+  PAYLOCITY__PUNCH__CAP_HOURS: {{ .Values.config.paylocityPunchCapHours | quote }}
+  PAYLOCITY__PUNCH__SYNC_DAYS: {{ .Values.config.paylocityPunchSyncDays | quote }}
+  BC__WEBHOOK_URL: {{ .Values.config.bcWebhookUrl | quote }}
+  LINEAR__WEBHOOK_URL: {{ .Values.config.linearWebhookUrl | quote }}
+  BC__DEEP_LINK_BASE: {{ .Values.config.bcDeepLinkBase | quote }}
+  UPLOADS__ATTACHMENTS_DIR: "/data/attachments"
   DB__NAME: {{ .Values.db.name | quote }}
   DB__HOST: {{ .Release.Name }}-db
-  DB_PORT: "5432"
-  # Moved out of the Secret: DB_USER is not a credential (DB_PASSWORD is).
+  DB__PORT: "5432"
+  # Moved out of the Secret: DB__USER is not a credential (DB__PASSWORD is).
   # db-statefulset and realtime read it from here via configMapKeyRef, so this
   # is the single source of truth for the whole chart.
-  DB_USER: {{ .Values.db.user | quote }}
+  DB__USER: {{ .Values.db.user | quote }}

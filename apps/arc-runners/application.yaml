@@ -4,9 +4,12 @@ metadata:
   name: arc-runners
   namespace: argocd
   annotations:
-    # Wave 3: the AutoscalingRunnerSet this creates is a CRD that
-    # arc-controller (2) installs, so it cannot sync before that is Healthy.
-    argocd.argoproj.io/sync-wave: "3"
+    # Wave -4: the AutoscalingRunnerSet this creates is a CRD that
+    # arc-controller (-5) installs, so it cannot sync before that is Healthy.
+    #
+    # Negative, ahead of the flow chain -- see the note in apps/arc-charts for
+    # why the three ARC apps no longer sit behind it.
+    argocd.argoproj.io/sync-wave: "-4"
 spec:
   project: default
   # The usual two sources. The `github-pat` Secret this chart reads is NOT

@@ -4,9 +4,27 @@ metadata:
   name: arc-charts
   namespace: argocd
   annotations:
-    # Wave 1: must land before arc-controller (2), which cannot resolve its
+    # Wave -6: must land before arc-controller (-5), which cannot resolve its
     # chart until this repository entry exists. No dependencies of its own.
-    argocd.argoproj.io/sync-wave: "1"
+    #
+    # WHY THE ARC APPS RUN AHEAD OF THE FLOW CHAIN (cert-manager -3 onward):
+    # sync waves are a single global ordering across everything `root` manages,
+    # and ArgoCD will not start a wave until the previous one reports Healthy.
+    # At the old 1/2/3 that put CI behind Bitwarden, ESO, the Flyway Job and
+    # every flow pod -- none of which CI depends on. flow-migrations in
+    # particular wedges easily (see "The migrations Job is named by image tag"
+    # below in the README), and when it did, `root` never applied waves 1-3 at
+    # all: the arc Applications were simply never created, with nothing logged
+    # anywhere, because the namespace they would log in did not exist yet.
+    #
+    # This inverts the coupling rather than removing it -- flow now waits on
+    # these three. That is the safer direction: none of the three can hang on
+    # anything external. This one is a Secret (Healthy on apply), arc-controller
+    # is a local Deployment, and ArgoCD ships no health check for
+    # AutoscalingRunnerSet, so arc-runners reports Healthy once the CR applies
+    # -- an unreachable GitHub or an expired PAT cannot stall the flow chain.
+    # Fully decoupling the two would take a second app-of-apps root.
+    argocd.argoproj.io/sync-wave: "-6"
 spec:
   project: default
   # Raw manifest, no chart -- this configures ArgoCD itself rather than

@@ -4,11 +4,14 @@ metadata:
   name: arc-controller
   namespace: argocd
   annotations:
-    # Wave 2: nothing depends on this the way flow's chain does, but it has to
-    # be Healthy before arc-runners (3). That app's only resource is an
+    # Wave -5: nothing depends on this the way flow's chain does, but it has to
+    # be Healthy before arc-runners (-4). That app's only resource is an
     # AutoscalingRunnerSet -- a CRD this chart installs -- so the reverse order
     # fails dry-run on an unknown kind.
-    argocd.argoproj.io/sync-wave: "2"
+    #
+    # Negative, ahead of the flow chain -- see the note in apps/arc-charts for
+    # why the three ARC apps no longer sit behind it.
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
   project: default
   sources:

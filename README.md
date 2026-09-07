@@ -50,14 +50,31 @@ Healthy before starting the next:
 
 | wave | app | why it must come first |
 |-----:|-----|------------------------|
+| `-6` | `arc-charts` | registers the OCI registry the two below pull from |
+| `-5` | `arc-controller` | installs the CRDs `arc-runners` is made of |
+| `-4` | `arc-runners` | needs those CRDs |
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
 | `-1` | `flow-secrets` | creates `flow-dev-secrets` |
 | `0`  | `flow-migrations` | Flyway needs `DB__PASSWORD` |
 | `1`  | `flow` | needs the whole Secret |
-| `1`  | `arc-charts` | registers the OCI registry the two below pull from |
-| `2`  | `arc-controller` | installs the CRDs `arc-runners` is made of |
-| `3`  | `arc-runners` | needs those CRDs |
+
+**The three ARC apps run first on purpose, and CI does not depend on any of
+the apps below them.** Waves are one global ordering, so they have to sit
+somewhere in it. They used to sit at `1`/`2`/`3`, which put the CI runners
+behind Bitwarden, ESO, the Flyway Job and every flow pod -- and because
+`flow-migrations` goes permanently OutOfSync on any Job template change (see
+[Gotchas](#gotchas)), a wedged migration meant `root` never applied waves 1-3
+and the arc Applications were never created at all. There is no error to find
+when that happens: the namespace that would carry the logs does not exist.
+
+Putting them first inverts the coupling rather than removing it -- the flow
+chain now waits on them -- but none of the three can hang on anything outside
+the cluster. `arc-charts` is a Secret, `arc-controller` is a local Deployment,
+and ArgoCD ships no health check for `AutoscalingRunnerSet`, so `arc-runners`
+reports Healthy as soon as the CR applies. An unreachable GitHub or an expired
+PAT cannot stall flow. Removing the coupling entirely would take a second
+app-of-apps root.
 
 ### The bootstrap secret
 

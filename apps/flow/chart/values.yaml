@@ -18,7 +18,7 @@ image:
 hostname: flow-dev.turdblossom.dev
 
 # Name of a Secret holding the real credentials -- DB__PASSWORD,
-# SECRET_KEY_BASE, integration API keys. No longer created by hand: the
+# APP__SECRET_KEY_BASE, integration API keys. No longer created by hand: the
 # flow-secrets app (sync wave -1) has External Secrets Operator build it from
 # the Bitwarden Secrets Manager project. This chart still just consumes it by
 # name, so nothing here had to change.

@@ -41,7 +41,7 @@ bitwarden-sdk-server  ──HTTPS──▶  External Secrets Operator
                       ┌───────────────────┴───────────────────┐
                       ▼                                       ▼
         flow: api, api-public (envFrom),          flow-migrations: Flyway Job
-        realtime + db (SECRET_KEY_BASE,           (DB__PASSWORD)
+        realtime + db (APP__SECRET_KEY_BASE,           (DB__PASSWORD)
         DB__PASSWORD)
 ```
 

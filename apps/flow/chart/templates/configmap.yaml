@@ -23,8 +23,8 @@ data:
   LINEAR_WEBHOOK_URL: {{ .Values.config.linearWebhookUrl | quote }}
   BC_DEEP_LINK_BASE: {{ .Values.config.bcDeepLinkBase | quote }}
   ATTACHMENTS_DIR: "/data/attachments"
-  DB_NAME: {{ .Values.db.name | quote }}
-  DB_HOST: {{ .Release.Name }}-db
+  DB__NAME: {{ .Values.db.name | quote }}
+  DB__HOST: {{ .Release.Name }}-db
   DB_PORT: "5432"
   # Moved out of the Secret: DB_USER is not a credential (DB_PASSWORD is).
   # db-statefulset and realtime read it from here via configMapKeyRef, so this

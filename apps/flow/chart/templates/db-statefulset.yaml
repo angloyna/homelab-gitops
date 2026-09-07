@@ -38,7 +38,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
-                  key: DB_PASSWORD
+                  key: DB__PASSWORD
             - name: POSTGRES_DB
               value: {{ .Values.db.name | quote }}
           volumeMounts:

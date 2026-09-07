@@ -41,8 +41,8 @@ bitwarden-sdk-server  ──HTTPS──▶  External Secrets Operator
                       ┌───────────────────┴───────────────────┐
                       ▼                                       ▼
         flow: api, api-public (envFrom),          flow-migrations: Flyway Job
-        realtime + db (SECRET_KEY_BASE,           (DB_PASSWORD)
-        DB_PASSWORD)
+        realtime + db (SECRET_KEY_BASE,           (DB__PASSWORD)
+        DB__PASSWORD)
 ```
 
 Sync waves order the bootstrap, and ArgoCD waits for each wave to report
@@ -53,7 +53,7 @@ Healthy before starting the next:
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
 | `-1` | `flow-secrets` | creates `flow-dev-secrets` |
-| `0`  | `flow-migrations` | Flyway needs `DB_PASSWORD` |
+| `0`  | `flow-migrations` | Flyway needs `DB__PASSWORD` |
 | `1`  | `flow` | needs the whole Secret |
 | `1`  | `arc-charts` | registers the OCI registry the two below pull from |
 | `2`  | `arc-controller` | installs the CRDs `arc-runners` is made of |
@@ -111,7 +111,7 @@ administer the GitHub repo. See [CI runners](#ci-runners).
 
 **Anything that is not a credential belongs in the ConfigMap, not Bitwarden.**
 `DB_USER`, `BC_WEBHOOK_URL`, `LINEAR_WEBHOOK_URL`, and `BC_DEEP_LINK_BASE` are
-config and live in `apps/flow/chart/templates/configmap.yaml`. `DB_PASSWORD` is
+config and live in `apps/flow/chart/templates/configmap.yaml`. `DB__PASSWORD` is
 a credential and comes from Bitwarden. Adding a non-secret to the Bitwarden
 project works but muddies the boundary.
 
@@ -129,13 +129,13 @@ kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deplo
 kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB_PASSWORD changed
 ```
 
-### DB_PASSWORD is special — rotating it takes two steps
+### DB__PASSWORD is special — rotating it takes two steps
 
 `POSTGRES_PASSWORD` is only read when Postgres initializes an **empty** data
 directory. For an existing database it is ignored completely: the password
 lives inside the database, not in the env var.
 
-So changing `DB_PASSWORD` in Bitwarden does **not** change the database's
+So changing `DB__PASSWORD` in Bitwarden does **not** change the database's
 password. ESO updates the Secret, pods restart with the new value, and every
 one of them is rejected with:
 

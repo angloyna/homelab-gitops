@@ -87,6 +87,30 @@ template:
     nodeSelector:
       kubernetes.io/arch: amd64
     initContainers:
+      # The tool cache is a hostPath so the toolchains setup-python,
+      # setup-node and setup-beam install survive the pod: a runner that finds
+      # Python 3.12 or OTP 27 already in the cache skips the download and
+      # install entirely, which the README names as the main reason a job is
+      # slower here than on ubuntu-latest. One cache per node, filled by the
+      # first job on that node to ask for a version, so a bump in a workflow's
+      # python-version needs no change here. Runner steps see it through
+      # AGENT_TOOLSDIRECTORY below; the chown is needed because kubelet
+      # creates a hostPath root-owned and the runner is uid 1001.
+      #
+      # It is the one thing that now persists between jobs. The actions write
+      # a version with a `.complete` marker and only trust a marked
+      # directory, so a job killed mid-install leaves nothing a later job
+      # will use. Two jobs installing the same uncached version on one node
+      # at the same moment can still trip over each other; that is a one-time
+      # rerun on the first run after enabling or after a version bump.
+      - name: init-toolcache-perms
+        image: docker:dind
+        command: ["chown", "1001:1001", "/opt/hostedtoolcache"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: toolcache
+            mountPath: /opt/hostedtoolcache
       - name: init-dind-externals
         image: ghcr.io/actions/actions-runner:2.336.0
         command: ["cp"]
@@ -132,6 +156,8 @@ template:
             value: unix:///var/run/docker.sock
           - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
             value: "120"
+          - name: AGENT_TOOLSDIRECTORY
+            value: /opt/hostedtoolcache
         resources:
           requests:
             cpu: "500m"
@@ -144,6 +170,8 @@ template:
             mountPath: /home/runner/_work
           - name: dind-sock
             mountPath: /var/run
+          - name: toolcache
+            mountPath: /opt/hostedtoolcache
     volumes:
       - name: dind-sock
         emptyDir: {}
@@ -151,3 +179,7 @@ template:
         emptyDir: {}
       - name: work
         emptyDir: {}
+      - name: toolcache
+        hostPath:
+          path: /var/lib/gha-toolcache
+          type: DirectoryOrCreate

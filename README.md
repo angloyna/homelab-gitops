@@ -76,6 +76,17 @@ reports Healthy as soon as the CR applies. An unreachable GitHub or an expired
 PAT cannot stall flow. Removing the coupling entirely would take a second
 app-of-apps root.
 
+**The three flow apps are disabled as of 2026-10-03.** Their `application.yaml`
+files are renamed `application.yaml.disabled`, which `root`'s
+`*/application.yaml` include does not match, so `root` pruned the three
+Applications. None of them carried the `resources-finalizer`, so the prune
+removed only the Application objects: the `flow-dev` namespace, its Services,
+Ingresses, the `flow-secrets` ClusterSecretStore and both Longhorn volumes
+(`data-flow-db-0`, `flow-attachments`) are all still there, with the workloads
+scaled to zero by hand. Nothing was deleted. To re-enable, rename the three
+files back and push; ArgoCD re-adopts the existing resources and scales them
+back up on its first sync.
+
 ### The bootstrap secret
 
 The machine account token is the single chicken-and-egg secret: it is what
@@ -250,6 +261,66 @@ kubectl -n arc-runners logs <pod> -c runner    # job output
 
 A few minutes after a run, pod count should be back to 1 with no `Completed` or
 `Error` leftovers.
+
+### When pods sit in `PodInitializing`
+
+Seen 2026-09-23 to 2026-10-03: both runner pods stuck `0/2 PodInitializing`
+for ten days, the `flow-k8s` pool showing no online runners on GitHub, and
+nothing logged anywhere. The dind sidecar had failed its startup probe for
+hours, then the pod sandbox vanished (pod IP went to `<none>`) and kubelet
+never rebuilt it. The controller still counted the two zombies as its two
+pending runners, so the listener held the count at 2 and never created
+replacements.
+
+**1. Confirm it is this.** A dind sidecar with a high restart count, no pod IP,
+and `PodReadyToStartContainers=False`:
+
+```bash
+kubectl -n arc-runners get pods -o wide
+kubectl -n arc-runners describe pod <pod> | sed -n '/^Init Containers:/,/^Conditions:/p'
+kubectl -n arc-runners get pod <pod> -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}'
+```
+
+If the pod *has* an IP and dind is still actively restarting, it is a live
+probe failure, not a zombie. Read the sidecar log before deleting anything:
+
+```bash
+kubectl -n arc-runners logs <pod> -c dind --tail=50
+```
+
+**2. Delete the stuck pods.** Runners are ephemeral and these are idle, so
+nothing is lost; the controller recreates them within seconds.
+
+```bash
+kubectl -n arc-runners delete pod -l actions.github.com/scale-set-name=flow-k8s --timeout=60s
+```
+
+**3. If that hangs in `Terminating`, force it.** Only when every container
+already shows `terminated` and the pod has no IP, meaning nothing is left
+running on the node:
+
+```bash
+kubectl -n arc-runners delete pod -l actions.github.com/scale-set-name=flow-k8s --grace-period=0 --force
+```
+
+**4. Verify.** Within a minute: `2/2 Running`, ephemeral runners `Running`,
+and `Listening for Jobs` in the runner log.
+
+```bash
+kubectl -n arc-runners get pods -o wide
+kubectl -n arc-runners get ephemeralrunners
+kubectl -n arc-runners logs <new-pod> -c runner --tail=5
+```
+
+**If the new pods also fail the dind probe,** the node is the problem, not
+the pods. The probe is `docker info` with a 1s timeout; healthy is well under
+100ms. If it is near or over 1s, the node is overloaded or containerd is
+unhealthy, and restarting `k3s-agent` on that node is the next step.
+
+```bash
+kubectl -n arc-runners exec <pod> -c dind -- sh -c 'time docker info >/dev/null'
+kubectl describe node <node> | sed -n '/^Conditions:/,/^Addresses:/p'
+```
 
 ### Known rough edges
 

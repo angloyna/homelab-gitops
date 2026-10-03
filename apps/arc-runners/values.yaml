@@ -1,8 +1,8 @@
 # Self-hosted GitHub Actions runners for spike-electric/flow.
 #
 # One ephemeral Pod per queued job, destroyed when the job ends -- nothing
-# persists between jobs. Replaces GitHub-hosted `ubuntu-latest` for the seven
-# jobs in that repo's .github/workflows/ci-checks.yml.
+# persists between jobs. Replaces GitHub-hosted `ubuntu-latest` for the jobs
+# in that repo's .github/workflows/ci-checks.yml.
 
 githubConfigUrl: "https://github.com/spike-electric/flow"
 
@@ -38,16 +38,30 @@ runnerScaleSetName: "flow-k8s"
 # job and is then destroyed, so with a single warm runner every job after the
 # first lands in the gap while its replacement is still starting.
 minRunners: 2
-# ci-checks.yml fans out to 7 parallel jobs; 8 leaves a little headroom.
-# Each runner is two containers on a two-node cluster -- raising this much
-# further will contend with flow itself for node capacity.
-maxRunners: 8
+# ci-checks.yml fans out to 10 parallel jobs (six singles plus the four-shard
+# integration matrix); 12 leaves a little headroom. Each runner is two
+# containers on a two-node cluster -- raising this much further will contend
+# with flow itself for node capacity.
+maxRunners: 12
 
-# dind, not kubernetes mode. The integration-tests job uses both a `services:`
-# postgis container and a `docker run` of flyway, and kubernetes mode supports
-# neither. This makes the chart inject a privileged docker:dind sidecar, an
-# init-dind-externals initContainer, and the work/dind-sock/dind-externals
-# volumes.
+# Docker-in-Docker, spelled out rather than requested with
+# `containerMode.type: dind`. The two are the same pod: this is the chart's
+# own dind rendering for Kubernetes >= 1.29 (`helm template` it with
+# containerMode set and diff), copied here because the chart injects its dind
+# sidecar verbatim and drops any `dind` container declared in values -- so
+# there is no other way to pass dockerd a flag. GitHub's docs prescribe
+# exactly this: unset containerMode, copy the spec, edit.
+#
+# The flag is `--registry-mirror`: dockerd asks zot for every Docker Hub image
+# first and falls back to Docker Hub when zot is unreachable. zot's on-demand
+# sync (apps/zot) fetches a miss from Docker Hub once and serves every later
+# pull from the Longhorn volume, so the postgis and flyway images the
+# integration shards pull are a LAN hop after the first job. Addressed by DNS,
+# unlike flow's zot references: dockerd runs in the pod's network namespace,
+# where CoreDNS resolves, and the name survives a Service recreation.
+#
+# Kubernetes mode would avoid dind but supports neither the `services:`
+# postgis container nor the `docker run` of flyway that ci-checks.yml uses.
 #
 # Two consequences worth knowing before editing that workflow:
 #   - runner and dind share a network namespace, which is why the service
@@ -55,11 +69,15 @@ maxRunners: 8
 #     reaches the same Postgres.
 #   - bind mounts are resolved by dockerd inside the dind sidecar, not by the
 #     runner. That normally breaks silently; it works here only because the
-#     chart mounts the `work` volume at /home/runner/_work in BOTH containers,
-#     so ${{ github.workspace }} means the same path in each.
-containerMode:
-  type: "dind"
-
+#     `work` volume is mounted at /home/runner/_work in BOTH containers, so
+#     ${{ github.workspace }} means the same path in each.
+#
+# The runner image appears twice (runner container, init-dind-externals);
+# bump both together. Pinned deliberately: Kubernetes defaults
+# imagePullPolicy to Always for the `latest` tag, so `:latest` meant a
+# registry round-trip before every runner pod started -- and a silent runner
+# upgrade whenever GitHub republished the tag. A version tag makes warm nodes
+# skip the registry and turns upgrades into a commit.
 template:
   spec:
     # Arch, not hostname -- this is not the node pinning the README warns
@@ -68,22 +86,52 @@ template:
     # silently picking up jobs it cannot run.
     nodeSelector:
       kubernetes.io/arch: amd64
+    initContainers:
+      - name: init-dind-externals
+        image: ghcr.io/actions/actions-runner:2.336.0
+        command: ["cp"]
+        args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+      - name: dind
+        image: docker:dind
+        args:
+          - dockerd
+          - --host=unix:///var/run/docker.sock
+          - --group=$(DOCKER_GROUP_GID)
+          - --registry-mirror=http://zot.zot.svc.cluster.local:5000
+          - --insecure-registry=zot.zot.svc.cluster.local:5000
+        env:
+          - name: DOCKER_GROUP_GID
+            value: "123"
+        securityContext:
+          privileged: true
+        restartPolicy: Always
+        startupProbe:
+          exec:
+            command:
+              - docker
+              - info
+          initialDelaySeconds: 0
+          failureThreshold: 24
+          periodSeconds: 5
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: dind-externals
+            mountPath: /home/runner/externals
     containers:
-      # Only the runner container is overridden. Do NOT declare the `dind`
-      # container here -- containerMode injects it, and redeclaring it drops
-      # the socket and volume wiring that makes the bind mount above work.
       - name: runner
-        # Pinned deliberately. Kubernetes defaults imagePullPolicy to Always
-        # for the `latest` tag and IfNotPresent for any other, so `:latest`
-        # meant a registry round-trip before every single runner pod started --
-        # and a silent runner upgrade whenever GitHub republished the tag.
-        # A version tag makes warm nodes skip the registry entirely and turns
-        # upgrades into a commit.
-        #
-        # 2.336.0 was digest-identical to `latest` when pinned, so this changed
-        # nothing that was running at the time.
         image: ghcr.io/actions/actions-runner:2.336.0
         command: ["/home/runner/run.sh"]
+        env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+          - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+            value: "120"
         resources:
           requests:
             cpu: "500m"
@@ -91,3 +139,15 @@ template:
           limits:
             cpu: "2"
             memory: "4Gi"
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+    volumes:
+      - name: dind-sock
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      - name: work
+        emptyDir: {}

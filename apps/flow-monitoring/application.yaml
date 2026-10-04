@@ -1,0 +1,24 @@
+# Flow's monitoring stack (Prometheus, Loki, Grafana, blackbox probes) is
+# Spike's, so its manifests live in spike-electric/flow-infrastructure under
+# helm/. This Application only syncs the Applications defined there; ArgoCD
+# needs a read-only credential for that repo (see README, "Flow monitoring").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flow-monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/spike-electric/flow-infrastructure.git
+    targetRevision: HEAD
+    path: helm/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -190,6 +190,37 @@ This bit us during the initial migration: the cluster's Postgres had been
 initialized with a different password than the one in the Bitwarden project,
 so the first ESO sync broke every database client until the `ALTER USER` above.
 
+## Flow monitoring
+
+Prometheus, Loki and Grafana for Spike's Flow hosts run in this cluster, but
+they are Spike's, so everything about them lives in
+`spike-electric/flow-infrastructure` under `helm/` (that repo's README has
+the design, the Cloudflare steps and the verification commands).
+`apps/flow-monitoring/` is the only trace here: an Application that syncs
+the Applications defined in that repo's `helm/argocd/`.
+
+ArgoCD needs read access to that repo. The org disallows deploy keys, so it
+is a fine-grained PAT (Contents: read-only on that one repository, nothing
+else) held as a repository Secret in the `argocd` namespace,
+`flow-infrastructure-repo`, over HTTPS. Like the runners' PAT it is created
+by hand and is not in Bitwarden; it expires, so set a reminder, and renew by
+recreating the Secret:
+
+```bash
+kubectl -n argocd create secret generic flow-infrastructure-repo \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/spike-electric/flow-infrastructure.git \
+  --from-literal=username=x-access-token \
+  --from-literal=password='github_pat_…' \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n argocd label secret flow-infrastructure-repo argocd.argoproj.io/secret-type=repository --overwrite
+```
+
+The stack reads
+`GRAFANA__ADMIN_PASSWORD` and `GRAFANA__SLACK_WEBHOOK_URL` through the
+`flow-secrets` ClusterSecretStore, so it depends on the bootstrap token
+above being valid.
+
 ## CI runners
 
 `arc-controller` + `arc-runners` run GitHub Actions self-hosted runners for

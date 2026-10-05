@@ -1,7 +1,8 @@
 # ArgoCD's UI and API on the tailnet, as https://argocd.spikeelectric.dev.
 #
-# ArgoCD itself is the hand-installed `argocd` Helm release (README,
-# "Bootstrapping"), not an app here, and its argocd-server serves TLS with
+# ArgoCD itself is the hand-installed `argocd` Helm release (argo-cd chart,
+# `helm -n argocd get values argocd`), not an app here, and its
+# argocd-server serves TLS with
 # its own self-signed certificate: a plain-HTTP request to it gets a 301
 # to https, which behind a TLS-terminating proxy is a redirect loop. So
 # Traefik re-encrypts: it terminates the real certificate (Ingress below)

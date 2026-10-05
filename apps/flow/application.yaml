@@ -1,0 +1,27 @@
+# Everything Spike's Flow runs on this cluster -- the Bitwarden secret store,
+# the staging environment, and its monitoring stack -- is defined in
+# spike-electric/flow-infrastructure under helm/, because it is Spike's.
+# This Application is the only trace here: it syncs the Applications in that
+# repo's helm/argocd/, each of which points back at a chart in the same repo.
+#
+# ArgoCD needs a read-only credential for that repo (see README, "Flow").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flow
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/spike-electric/flow-infrastructure.git
+    targetRevision: HEAD
+    path: helm/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

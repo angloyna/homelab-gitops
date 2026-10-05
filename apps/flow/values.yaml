@@ -1,7 +1,0 @@
-image:
-  registry: 10.43.114.154:5000
-  tag: dev
-
-hostname: flow-dev.turdblossom.dev
-
-existingSecret: flow-dev-secrets

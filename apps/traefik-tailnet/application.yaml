@@ -4,9 +4,9 @@ metadata:
   name: traefik-tailnet
   namespace: argocd
   annotations:
-    # After tailscale-operator (-1): a Service with loadBalancerClass
+    # After tailscale-operator (2): a Service with loadBalancerClass
     # tailscale sits Pending until the operator exists to claim it.
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   project: default
   source:

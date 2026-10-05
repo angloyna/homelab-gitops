@@ -25,11 +25,12 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Four credentials are created by hand and belong to neither git nor
+Three credentials are created by hand and belong to neither git nor
 Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
-flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
-runners use (see [CI runners](#ci-runners)), and the Tailscale operator's
-OAuth client (see [Tailscale](#tailscale)).
+flow-infrastructure with (see [Flow](#flow)), and the GitHub PAT the CI
+runners use (see [CI runners](#ci-runners)). The Tailscale operator's
+OAuth client used to be a fourth; it now comes from Bitwarden (see
+[Tailscale](#tailscale)).
 
 ### How it fits together
 
@@ -57,8 +58,10 @@ Healthy before starting the next:
 |-----:|-----|------------------------|
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
-| `-1` | `tailscale-operator` | has to exist before `traefik-tailnet` (0) asks it for a tailnet device; depends on nothing |
 | `0`  | `flow` | the nested app-of-apps; its children carry their own waves in flow-infrastructure (the three ARC apps at -4/-3/-2, `flow-secrets` -1, then `flow-dev` and the monitoring apps at 0), and inside the flow chart the ExternalSecrets, database, Flyway hook and apps are waved again |
+| `1`  | `tailscale-oauth` | the operator's credential, an ExternalSecret through the `flow-dev` store that `flow` defines |
+| `2`  | `tailscale-operator` | cannot start without that Secret |
+| `3`  | `traefik-tailnet` | a Service the operator has to be there to claim |
 
 **The CI runners are children of `flow`, not of `root`.** They used to be
 three apps here at waves ahead of everything, so that a wedged Flow sync
@@ -239,29 +242,19 @@ certificate comes from cert-manager through a DNS-01 ClusterIssuer that
 flow-infrastructure defines (`helm/letsencrypt`). Grafana is the first site
 on it; the Cloudflare tunnel's public hostnames carry the rest for now.
 
-### The one manual step
+### Where the credential comes from
 
-The operator logs in with an OAuth client from the admin console (Settings
--> OAuth clients: scopes Devices Core write and Auth Keys write, tag
-`tag:k8s-operator`). The ACL has to define that tag and let it own
-`tag:k8s`, which the operator puts on the proxies it creates:
-
-```jsonc
-"tagOwners": {
-  "tag:k8s-operator": ["autogroup:admin"],
-  "tag:k8s":          ["tag:k8s-operator"],
-},
-```
-
-The client's ID and secret go in a Secret the chart mounts by name. Hand
-applied, like the ESO token: ArgoCD never sees it, so `prune` cannot
-remove it.
+The operator logs in with an OAuth client. flow-infrastructure creates it
+with OpenTofu (`modules/tailscale`, applied from `shared/`) along with the
+tailnet policy that defines `tag:k8s-operator` and lets it own `tag:k8s`,
+and `environments/dev` there writes the client's id and secret into the
+flow-dev Bitwarden project. `apps/tailscale-oauth` is an ExternalSecret
+that turns those into the `operator-oauth` Secret the chart mounts. No
+step here; rotating the client is a `tofu apply` in that repo, and the
+operator picks the new mount up on its next restart:
 
 ```bash
-kubectl create namespace tailscale
-kubectl -n tailscale create secret generic operator-oauth \
-  --from-literal=client_id='…' \
-  --from-literal=client_secret='…'
+kubectl -n tailscale rollout restart deploy/operator
 ```
 
 ### Verifying

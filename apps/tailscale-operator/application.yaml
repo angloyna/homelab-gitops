@@ -3,18 +3,20 @@
 # so names like grafana.spikeelectric.dev can resolve to a tailnet address
 # and be reachable only from it. See README, "Tailscale".
 #
-# The one credential, the OAuth client the operator logs in with, is the
-# Secret `operator-oauth` in the tailscale namespace: created by hand, in
-# neither git nor Bitwarden, like the ESO bootstrap token.
+# The one credential, the OAuth client the operator logs in with, arrives
+# as the Secret `operator-oauth` from Bitwarden (apps/tailscale-oauth);
+# OpenTofu in flow-infrastructure creates the client and writes it there.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: tailscale-operator
   namespace: argocd
   annotations:
-    # Nothing in the flow chain depends on this and it depends on nothing;
-    # -1 only so it is up before traefik-tailnet (0) asks it for a device.
-    argocd.argoproj.io/sync-wave: "-1"
+    # After tailscale-oauth (1), which needs the flow app (0) for its secret
+    # store: without the Secret the operator pod never starts, and a wave
+    # that never goes Healthy would hold up everything after it. The cost
+    # is that on a fresh cluster the tailnet side waits for Flow's chain.
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
   sources:

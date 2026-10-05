@@ -1,10 +1,11 @@
 # Tailscale Kubernetes operator. Stock apart from what is spelled out here.
 #
-# No oauth block: the chart then mounts the pre-created Secret
-# `operator-oauth` (keys client_id, client_secret) from this namespace.
-# README has the command. The client must be tagged tag:k8s-operator in
-# the admin console, matching operatorConfig.defaultTags below, and the
-# ACL must let tag:k8s-operator own tag:k8s, which the proxies get.
+# No oauth block: the chart then mounts the Secret `operator-oauth` (keys
+# client_id, client_secret) from this namespace, which apps/tailscale-oauth
+# syncs from Bitwarden. The client is tagged tag:k8s-operator, matching
+# operatorConfig.defaultTags below, and the policy lets tag:k8s-operator
+# own tag:k8s, which the proxies get; both are defined in
+# flow-infrastructure (shared/tailnet-policy.hujson, modules/tailscale).
 
 operatorConfig:
   hostname: tailscale-operator

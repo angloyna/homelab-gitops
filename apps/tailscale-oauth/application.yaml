@@ -1,0 +1,31 @@
+# The Tailscale operator's OAuth client, from Bitwarden. flow-infrastructure
+# creates the client with OpenTofu and writes its id and secret into the
+# flow-dev project; the ExternalSecret here turns them into the
+# `operator-oauth` Secret the operator chart mounts. Nothing is typed in.
+#
+# Wave 1: it reads the flow-dev ClusterSecretStore, which the `flow` app
+# (0) defines, through External Secrets (-2). The operator (2) waits on
+# this being Healthy, which ArgoCD's ExternalSecret health check reports
+# once the Secret has synced.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tailscale-oauth
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/tailscale-oauth/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tailscale
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -10,17 +10,21 @@ Helm only — no Kustomize. Three shapes are in use:
 - **upstream chart + local values** (`cert-manager`, `external-secrets`,
   `longhorn`, `zot`): a multi-source Application, values referenced through a
   `$values` ref source.
-- **in-repo chart** (`flow`, `flow-migrations`, `flow-secrets`): `path:` points
-  at `apps/<name>/chart`, with `valueFiles: [../values.yaml]`.
 - **OCI chart + local values** (`arc-controller`, `arc-runners`): as the first
   shape, but the chart comes from a container registry. GitHub publishes ARC
   nowhere else. `repoURL` takes **no** `oci://` prefix, and the registry must
   be registered as a repository first — `arc-charts` does that.
+- **nested app-of-apps in another repo** (`flow`): the Application points at
+  a directory of Applications in `spike-electric/flow-infrastructure`, whose
+  charts live there too. See [Flow](#flow).
 
 ## Secrets
 
 Application secrets come from **Bitwarden Secrets Manager**, synced into the
-cluster by External Secrets Operator. No secret material is committed.
+cluster by External Secrets Operator. No secret material is committed. The
+store and the ExternalSecrets that use it are defined in flow-infrastructure
+(see [Flow](#flow)); this repo supplies the operator, the SDK server and the
+bootstrap token.
 
 Two credentials are created by hand and belong to neither git nor Bitwarden:
 the ESO bootstrap token below, and the GitHub PAT the CI runners use (see
@@ -29,20 +33,20 @@ the ESO bootstrap token below, and the GitHub PAT the CI runners use (see
 ### How it fits together
 
 ```
-Bitwarden SM project 006747b1-…
-        │  (machine account token)
+Bitwarden SM org 006747b1-…: projects flow-staging, flow-dev
+        │  (one machine account token, Can read on each project)
         ▼
 bitwarden-sdk-server  ──HTTPS──▶  External Secrets Operator
   (REST shim for the                      │
-   Rust SDK, :9998)                       │  ClusterSecretStore "flow-secrets"
-                                          ▼
-                              Secret/flow-dev-secrets  (namespace flow-dev)
-                                          │
+   Rust SDK, :9998)                       │  ClusterSecretStores, one per project
+                                          │  (flow-infrastructure, helm/flow-secrets)
                       ┌───────────────────┴───────────────────┐
-                      ▼                                       ▼
-        flow: api, api-public (envFrom),          flow-migrations: Flyway Job
-        realtime + db (APP__SECRET_KEY_BASE,           (DB__PASSWORD)
-        DB__PASSWORD)
+                      ▼ "flow-dev"                            ▼ "flow-secrets" (flow-staging)
+   Secret/flow-dev-secrets +                      Secret/grafana-secrets
+   Secret/flow-dev-ghcr-pull                      (namespace monitoring)
+   (namespace flow-dev: realtime's envFrom, the
+    api services' mounted /app/.env, the Flyway
+    hook, image pulls)
 ```
 
 Sync waves order the bootstrap, and ArgoCD waits for each wave to report
@@ -55,17 +59,15 @@ Healthy before starting the next:
 | `-4` | `arc-runners` | needs those CRDs |
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
-| `-1` | `flow-secrets` | creates `flow-dev-secrets` |
-| `0`  | `flow-migrations` | Flyway needs `DB__PASSWORD` |
-| `1`  | `flow` | needs the whole Secret |
+| `0`  | `flow` | the nested app-of-apps; its children carry their own waves in flow-infrastructure (`flow-secrets` -1, then `flow-dev` and the monitoring apps at 0), and inside the flow chart the ExternalSecrets, database, Flyway hook and apps are waved again |
 
 **The three ARC apps run first on purpose, and CI does not depend on any of
 the apps below them.** Waves are one global ordering, so they have to sit
 somewhere in it. They used to sit at `1`/`2`/`3`, which put the CI runners
-behind Bitwarden, ESO, the Flyway Job and every flow pod -- and because
-`flow-migrations` goes permanently OutOfSync on any Job template change (see
-[Gotchas](#gotchas)), a wedged migration meant `root` never applied waves 1-3
-and the arc Applications were never created at all. There is no error to find
+behind Bitwarden, ESO, the Flyway Job and every flow pod -- and because the
+old migrations Job went permanently OutOfSync on any template change, a
+wedged migration meant `root` never applied waves 1-3 and the arc
+Applications were never created at all. There is no error to find
 when that happens: the namespace that would carry the logs does not exist.
 
 Putting them first inverts the coupling rather than removing it -- the flow
@@ -76,16 +78,19 @@ reports Healthy as soon as the CR applies. An unreachable GitHub or an expired
 PAT cannot stall flow. Removing the coupling entirely would take a second
 app-of-apps root.
 
-**The three flow apps are disabled as of 2026-10-03.** Their `application.yaml`
-files are renamed `application.yaml.disabled`, which `root`'s
-`*/application.yaml` include does not match, so `root` pruned the three
-Applications. None of them carried the `resources-finalizer`, so the prune
-removed only the Application objects: the `flow-dev` namespace, its Services,
-Ingresses, the `flow-secrets` ClusterSecretStore and both Longhorn volumes
-(`data-flow-db-0`, `flow-attachments`) are all still there, with the workloads
-scaled to zero by hand. Nothing was deleted. To re-enable, rename the three
-files back and push; ArgoCD re-adopts the existing resources and scales them
-back up on its first sync.
+**The `flow-dev` namespace is being reused.** The first attempt at Flow on
+this cluster (`apps/flow`, `apps/flow-migrations`, `apps/flow-secrets` as
+in-repo charts, images pushed by hand to zot) was disabled on 2026-10-03 and
+replaced by the dev environment defined in flow-infrastructure, which lands
+in the same namespace under new names (`flow-dev-api`, `flow-dev-db-0`,
+...). The `flow-secrets` ClusterSecretStore the old app created is the one
+the new apps adopt (same Application name). The old objects are not: before
+the new Application's first sync, delete what the retired charts left --
+the scaled-down workloads, the `flow-dev-secrets` ExternalSecret, and the
+Longhorn volumes `data-flow-db-0` and `flow-attachments` -- so the restore
+starts from an empty volume and nothing old answers on the old Service
+names. `kubectl delete namespace flow-dev` is the simplest way; ArgoCD
+recreates the namespace.
 
 ### The bootstrap secret
 
@@ -101,14 +106,16 @@ kubectl create secret generic bitwarden-access-token \
 
 Requirements for that machine account:
 
-- **Explicitly granted access to project `006747b1-…`.** Bitwarden scopes
-  machine accounts per project. A token without the grant fails with a bare
-  `404 Resource not found`, which looks identical to a wrong project ID.
+- **Explicitly granted access to every project a store reads**: today
+  `flow-staging` (`747cfdb0-…`) and `flow-dev` (`5b6aa3f7-…`). Bitwarden
+  scopes machine accounts per project. A token without the grant fails with
+  a bare `404 Resource not found`, which looks identical to a wrong project
+  ID.
 - **"Can read" is enough.** ESO's provider page says to grant Read-Write, but
   states it as a blanket note covering the whole provider — including
-  `PushSecret`, which writes secrets back to Bitwarden. This repo only ever
-  reads: `apps/flow-secrets/` defines a ClusterSecretStore and an
-  ExternalSecret and no PushSecret. Since this token bootstraps every other
+  `PushSecret`, which writes secrets back to Bitwarden. Nothing here or in
+  flow-infrastructure defines a PushSecret; the store and every
+  ExternalSecret only read. Since this token bootstraps every other
   credential in the cluster, grant the narrower permission. If a sync ever
   fails with a permission error, widen it then.
 
@@ -121,9 +128,10 @@ BWS_ACCESS_TOKEN='0.xxx…' bws secret list 006747b1-5f82-45f5-8ad5-b49a0130b72c
 
 ### Which keys go where
 
-`apps/flow-secrets/chart/values.yaml` enumerates the keys pulled from
-Bitwarden. It mirrors `scripts/required-secrets.txt` in the flow repo — **keep
-the two in sync**: that file gates compose deploys, this list gates the cluster.
+`helm/flow/values.yaml` in flow-infrastructure (`secrets.keys`) enumerates
+the keys pulled from Bitwarden. It mirrors `scripts/required-secrets.txt` in
+the flow repo — **keep the two in sync**: that file gates compose deploys,
+this list gates the cluster.
 
 Keys are listed explicitly rather than using `dataFrom.find`, because the
 Bitwarden provider ignores find selectors and returns secrets keyed by UUID —
@@ -133,14 +141,17 @@ instead of silently leaving a variable unset.
 
 The CI runners' GitHub PAT is deliberately **not** in that list, and not in
 Bitwarden at all. It is not a flow environment variable — nothing in the
-application reads it — and `flow-dev-secrets` is `envFrom`'d into every api
-pod, so adding it there would hand every one of them a credential that can
-administer the GitHub repo. See [CI runners](#ci-runners).
+application reads it — and `flow-dev-secrets` reaches every flow pod, so
+adding it there would hand every one of them a credential that can
+administer the GitHub repo. See [CI runners](#ci-runners). The GHCR pull
+token (`GHCR__PULL_TOKEN`) *is* in Bitwarden, but lands in a separate
+dockerconfigjson Secret that only the kubelet reads, never in a pod's
+environment.
 
 **Anything that is not a credential belongs in the ConfigMap, not Bitwarden.**
-`DB__USER`, `BC_WEBHOOK_URL`, `LINEAR__WEBHOOK_URL`, and `BC___DEEP_LINK_BASE` are
-config and live in `apps/flow/chart/templates/configmap.yaml`. `DB__PASSWORD` is
-a credential and comes from Bitwarden. Adding a non-secret to the Bitwarden
+`DB__USER`, the webhook URLs and `BC__DEEP_LINK_BASE` are config and live in
+flow-infrastructure's `helm/flow` values. `DB__PASSWORD` is a credential and
+comes from Bitwarden. Adding a non-secret to the Bitwarden
 project works but muddies the boundary.
 
 ### Rotating a secret
@@ -153,8 +164,8 @@ Secret in place.
 running pod on its next restart. Force it:
 
 ```bash
-kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deploy/flow-realtime
-kubectl -n flow-dev rollout restart statefulset/flow-db   # only if DB__PASSWORD changed
+kubectl -n flow-dev rollout restart deploy/flow-dev-api deploy/flow-dev-api-public deploy/flow-dev-realtime
+kubectl -n flow-dev rollout restart statefulset/flow-dev-db   # only if DB__PASSWORD changed
 ```
 
 ### DB__PASSWORD is special — rotating it takes two steps
@@ -180,24 +191,28 @@ keep working on the old credential. Change the database too:
 # because the volume was initialized with POSTGRES_USER=flow_user.
 NEW=$(kubectl -n flow-dev get secret flow-dev-secrets -o jsonpath='{.data.DB__PASSWORD}' | base64 -d)
 printf "ALTER USER flow_user WITH PASSWORD '%s';\n" "$NEW" \
-  | kubectl -n flow-dev exec -i flow-db-0 -- psql -U flow_user -d flow_data -q
+  | kubectl -n flow-dev exec -i flow-dev-db-0 -c db -- psql -U flow_user -d flow_data -q
 
-kubectl -n flow-dev rollout restart deploy/flow-api deploy/flow-api-public deploy/flow-realtime
-kubectl -n flow-dev delete job flow-migrations-dev   # let it re-run
+kubectl -n flow-dev rollout restart deploy/flow-dev-api deploy/flow-dev-api-public deploy/flow-dev-realtime
 ```
+
+(The Flyway hook re-runs on the next sync by itself; nothing to delete.)
 
 This bit us during the initial migration: the cluster's Postgres had been
 initialized with a different password than the one in the Bitwarden project,
 so the first ESO sync broke every database client until the `ALTER USER` above.
 
-## Flow monitoring
+## Flow
 
-Prometheus, Loki and Grafana for Spike's Flow hosts run in this cluster, but
-they are Spike's, so everything about them lives in
+Spike's Flow runs in this cluster -- a dev environment, its Bitwarden
+secret store, and the Prometheus/Loki/Grafana stack that watches the Flow
+hosts -- but it is Spike's, so everything about it lives in
 `spike-electric/flow-infrastructure` under `helm/` (that repo's README has
-the design, the Cloudflare steps and the verification commands).
-`apps/flow-monitoring/` is the only trace here: an Application that syncs
-the Applications defined in that repo's `helm/argocd/`.
+the design, the manual prerequisites and the verification commands).
+`apps/flow/` is the only trace here: an Application that syncs the
+Applications defined in that repo's `helm/argocd/`. Images come from GHCR,
+built by the flow repo's own workflow, which also commits each new tag into
+flow-infrastructure; nothing here changes per deploy.
 
 ArgoCD needs read access to that repo. The org disallows deploy keys, so it
 is a fine-grained PAT (Contents: read-only on that one repository, nothing
@@ -216,10 +231,8 @@ kubectl -n argocd create secret generic flow-infrastructure-repo \
 kubectl -n argocd label secret flow-infrastructure-repo argocd.argoproj.io/secret-type=repository --overwrite
 ```
 
-The stack reads
-`GRAFANA__ADMIN_PASSWORD` and `GRAFANA__SLACK_WEBHOOK_URL` through the
-`flow-secrets` ClusterSecretStore, so it depends on the bootstrap token
-above being valid.
+Everything there reads Bitwarden through the `flow-secrets`
+ClusterSecretStore, so it depends on the bootstrap token above being valid.
 
 ## CI runners
 
@@ -373,22 +386,19 @@ kubectl describe node <node> | sed -n '/^Conditions:/,/^Addresses:/p'
 
 ## Gotchas
 
-**The migrations Job is named by image tag.** `flow-migrations-{{ .Values.image.tag }}`
-with a permanently-`dev` tag means the name never changes, and Job specs are
-immutable — so *any* change to the Job template leaves the app permanently
-OutOfSync. Delete the Job and let ArgoCD recreate it (Flyway is idempotent):
-
-```bash
-kubectl -n flow-dev delete job flow-migrations-dev
-```
+**Migrations are an ArgoCD hook, not a tracked Job.** The old
+`flow-migrations-dev` Job was immutable and permanently OutOfSync after any
+template change. The flow chart in flow-infrastructure runs Flyway as a Sync
+hook with `BeforeHookCreation`, so it is recreated every sync and never part
+of the diff; a failed migration fails the sync instead of wedging it.
 
 **Nothing is pinned to a node any more.** Earlier values files pinned flow and
 zot to `tina` citing "louise network flakiness". That was a misdiagnosis — the
 real cause was a pending kernel upgrade leaving the running kernel's modules
 mismatched, which crash-looped `k3s-agent` until a reboot. Pinning zot was
-actively harmful: flow pulls images from zot's ClusterIP with
-`imagePullPolicy: Always`, so a registry pinned to the same node as everything
-else means a node reboot leaves every flow pod in `ImagePullBackOff`.
+actively harmful while flow pulled its images from it: a registry pinned to
+the same node as everything else means a node reboot leaves every pod in
+`ImagePullBackOff`.
 
 **ArgoCD is not managed by this repo** and is pinned to `tina` in its own Helm
 release, so it is unavailable while `tina` reboots. Drain first so workloads
@@ -400,8 +410,9 @@ kubectl drain tina --ignore-daemonsets --delete-emptydir-data --timeout=300s
 kubectl uncordon tina
 ```
 
-**`zot` is addressed by ClusterIP, not DNS** (`10.43.114.154:5000`). Image
-pulls happen in the node's network namespace and never reach CoreDNS, so
-`*.svc.cluster.local` cannot resolve for them. If zot's Service is ever
-recreated it gets a new ClusterIP, and `apps/flow/values.yaml` plus
-`apps/flow-migrations/values.yaml` must be updated.
+**`zot` is only the CI runners' pull-through mirror now.** Flow's images
+come from GHCR over DNS with a pull secret. The old chart addressed zot by
+ClusterIP because image pulls happen in the node's network namespace and
+never reach CoreDNS, so `*.svc.cluster.local` cannot resolve for them --
+still true for anything that pulls from zot directly; the runners' dind
+resolves it fine because dockerd runs inside the pod.

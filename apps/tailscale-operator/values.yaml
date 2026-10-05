@@ -1,0 +1,30 @@
+# Tailscale Kubernetes operator. Stock apart from what is spelled out here.
+#
+# No oauth block: the chart then mounts the pre-created Secret
+# `operator-oauth` (keys client_id, client_secret) from this namespace.
+# README has the command. The client must be tagged tag:k8s-operator in
+# the admin console, matching operatorConfig.defaultTags below, and the
+# ACL must let tag:k8s-operator own tag:k8s, which the proxies get.
+
+operatorConfig:
+  hostname: tailscale-operator
+  defaultTags:
+    - "tag:k8s-operator"
+
+proxyConfig:
+  # The devices the operator creates for Services and Ingresses carry this
+  # tag; the ACL grant for cluster services is written against it.
+  defaultTags: "tag:k8s"
+
+# The operator can also expose the Kubernetes API server on the tailnet
+# and let tailnet identity map to RBAC. Not wanted: kubectl access stays
+# on the LAN with the kubeconfig.
+apiServerProxyConfig:
+  mode: "false"
+
+# We expose Services (apps/traefik-tailnet), not Ingresses: a tailscale-class
+# Ingress terminates TLS with a *.ts.net certificate, and the names we want
+# are under spikeelectric.dev, whose certificates Traefik holds. The class
+# stays registered because it costs nothing and may be useful for a one-off.
+ingressClass:
+  enabled: true

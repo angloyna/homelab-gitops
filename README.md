@@ -8,8 +8,9 @@ each app by globbing `*/application.yaml`, so adding a directory with an
 Helm only — no Kustomize. Two shapes are in use:
 
 - **upstream chart + local values** (`cert-manager`, `external-secrets`,
-  `longhorn`, `zot`): a multi-source Application, values referenced through a
-  `$values` ref source.
+  `longhorn`, `zot`, `tailscale-operator`): a multi-source Application,
+  values referenced through a `$values` ref source. `traefik-tailnet` is
+  the one raw-manifest app, a single Service (see [Tailscale](#tailscale)).
 - **nested app-of-apps in another repo** (`flow`): the Application points at
   a directory of Applications in `spike-electric/flow-infrastructure`, whose
   charts and values live there too. Flow itself, its monitoring stack and
@@ -24,10 +25,11 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Three credentials are created by hand and belong to neither git nor
+Four credentials are created by hand and belong to neither git nor
 Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
-flow-infrastructure with (see [Flow](#flow)), and the GitHub PAT the CI
-runners use (see [CI runners](#ci-runners)).
+flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
+runners use (see [CI runners](#ci-runners)), and the Tailscale operator's
+OAuth client (see [Tailscale](#tailscale)).
 
 ### How it fits together
 
@@ -55,6 +57,7 @@ Healthy before starting the next:
 |-----:|-----|------------------------|
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
+| `-1` | `tailscale-operator` | has to exist before `traefik-tailnet` (0) asks it for a tailnet device; depends on nothing |
 | `0`  | `flow` | the nested app-of-apps; its children carry their own waves in flow-infrastructure (the three ARC apps at -4/-3/-2, `flow-secrets` -1, then `flow-dev` and the monitoring apps at 0), and inside the flow chart the ExternalSecrets, database, Flyway hook and apps are waved again |
 
 **The CI runners are children of `flow`, not of `root`.** They used to be
@@ -221,6 +224,58 @@ kubectl -n argocd label secret flow-infrastructure-repo argocd.argoproj.io/secre
 
 Everything there reads Bitwarden through the `flow-secrets`
 ClusterSecretStore, so it depends on the bootstrap token above being valid.
+
+## Tailscale
+
+`tailscale-operator` is the [Tailscale Kubernetes
+operator](https://tailscale.com/kb/1236/kubernetes-operator); `traefik-tailnet`
+is a second LoadBalancer Service over k3s's Traefik pods with
+`loadBalancerClass: tailscale`, which the operator turns into a tailnet
+device named `ingress`. Traefik still routes by hostname, so putting a site
+on the tailnet is a DNS record for its name pointing at that device's
+100.x address, plus a certificate Traefik can serve for it; the record can
+be public (a tailnet address resolves to nothing for anyone outside) and the
+certificate comes from cert-manager through a DNS-01 ClusterIssuer that
+flow-infrastructure defines (`helm/letsencrypt`). Grafana is the first site
+on it; the Cloudflare tunnel's public hostnames carry the rest for now.
+
+### The one manual step
+
+The operator logs in with an OAuth client from the admin console (Settings
+-> OAuth clients: scopes Devices Core write and Auth Keys write, tag
+`tag:k8s-operator`). The ACL has to define that tag and let it own
+`tag:k8s`, which the operator puts on the proxies it creates:
+
+```jsonc
+"tagOwners": {
+  "tag:k8s-operator": ["autogroup:admin"],
+  "tag:k8s":          ["tag:k8s-operator"],
+},
+```
+
+The client's ID and secret go in a Secret the chart mounts by name. Hand
+applied, like the ESO token: ArgoCD never sees it, so `prune` cannot
+remove it.
+
+```bash
+kubectl create namespace tailscale
+kubectl -n tailscale create secret generic operator-oauth \
+  --from-literal=client_id='…' \
+  --from-literal=client_secret='…'
+```
+
+### Verifying
+
+```bash
+kubectl -n tailscale get pods                       # operator-0 plus one ts-traefik-tailnet-* proxy
+kubectl -n kube-system get svc traefik-tailnet      # EXTERNAL-IP: ingress.<tailnet>.ts.net
+tailscale status | grep -E 'ingress|tailscale-operator'
+```
+
+The device's address is what DNS records for tailnet-only sites point at:
+`tailscale ip -4 ingress`. The operator renames or replaces the proxy on
+some upgrades, but the address is stable for the device's lifetime; if it
+ever changes, the records do too.
 
 ## CI runners
 

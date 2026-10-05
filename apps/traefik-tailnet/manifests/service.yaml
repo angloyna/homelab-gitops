@@ -1,0 +1,37 @@
+# Traefik on the tailnet.
+#
+# k3s runs Traefik from its own HelmChart (not this repo) with a LoadBalancer
+# Service on the LAN, 192.168.1.240. This is a second Service over the same
+# pods, and loadBalancerClass tells the Tailscale operator to claim it: it
+# runs a proxy pod that joins the tailnet as the device `ingress` (tag:k8s)
+# and forwards 80 and 443 to Traefik. Nothing else changes -- Traefik still
+# routes by hostname, so a site is reachable this way only once a DNS record
+# for it points at the device's tailnet address. Today that is
+# grafana.spikeelectric.dev (flow-infrastructure, helm/monitoring); flow-dev
+# and ingest can follow one record at a time.
+#
+# Why a second Service rather than annotating k3s's: that Service is written
+# by a manifest under /var/lib/rancher/k3s on tina, and edits to it live
+# outside git. The selector below is the one k3s's Service uses.
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-tailnet
+  namespace: kube-system
+  annotations:
+    # The device name on the tailnet, so its MagicDNS name is
+    # ingress.<tailnet>.ts.net and `tailscale status` shows it as `ingress`.
+    tailscale.com/hostname: ingress
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  selector:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: traefik-kube-system
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+    - name: websecure
+      port: 443
+      targetPort: websecure

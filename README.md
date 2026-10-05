@@ -240,8 +240,21 @@ on the tailnet is a DNS record for its name pointing at that device's
 be public (a tailnet address resolves to nothing for anyone outside) and the
 certificate comes from cert-manager through a DNS-01 ClusterIssuer that
 flow-infrastructure defines (`helm/letsencrypt`). Grafana and Flow's dev
-tier (`grafana.` and `dev.spikeelectric.dev`) are on it; the Cloudflare
-tunnel's public hostnames carry the rest for now.
+tier (`grafana.` and `dev.spikeelectric.dev`) are on it, and so is ArgoCD
+(`argocd-tailnet`, below); the Cloudflare tunnel's public hostnames carry
+the rest for now.
+
+### ArgoCD on the tailnet
+
+`https://argocd.spikeelectric.dev`, from `apps/argocd-tailnet`: a DNS-only
+A record at the ingress device, an Ingress on `websecure` with a
+cert-manager certificate, and a second Service over the argocd-server pods
+that carries the Traefik annotations for re-encrypting to argocd-server's
+own self-signed TLS (plain HTTP to it is a redirect loop). The hand-installed
+`argocd` Helm release is untouched: `server.insecure` stays off and its
+Service is not edited. The `url` in `argocd-cm` is still the chart's
+placeholder; it only matters once SSO is configured. The CLI goes through
+the same door with `argocd login argocd.spikeelectric.dev --grpc-web`.
 
 ### Where the credential comes from
 

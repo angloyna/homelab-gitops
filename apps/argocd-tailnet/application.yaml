@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-tailnet
+  namespace: argocd
+  annotations:
+    # With traefik-tailnet (3): needs the ingress device to be useful, and
+    # the letsencrypt-spikeelectric ClusterIssuer that flow (0) defines.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/argocd-tailnet/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

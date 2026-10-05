@@ -1,0 +1,29 @@
+# Same recipe as grafana and dev (flow-infrastructure): a DNS-only A record
+# for the name points at the ingress device's tailnet address, so only the
+# tailnet resolves it to anything, and the certificate comes from the
+# letsencrypt-spikeelectric ClusterIssuer over DNS-01. websecure only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-tailnet
+  namespace: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: letsencrypt-spikeelectric
+spec:
+  ingressClassName: traefik
+  tls:
+    - secretName: argocd-tls
+      hosts:
+        - argocd.spikeelectric.dev
+  rules:
+    - host: argocd.spikeelectric.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server-tailnet
+                port:
+                  number: 443

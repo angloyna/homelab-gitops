@@ -1,0 +1,10 @@
+# Traefik -> argocd-server is HTTPS to a self-signed certificate inside the
+# cluster; this tells Traefik not to verify it on that one hop. The
+# certificate a browser sees is the real one on the Ingress.
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: argocd-server-selfsigned
+  namespace: argocd
+spec:
+  insecureSkipVerify: true

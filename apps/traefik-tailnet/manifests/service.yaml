@@ -7,8 +7,8 @@
 # and forwards 80 and 443 to Traefik. Nothing else changes -- Traefik still
 # routes by hostname, so a site is reachable this way only once a DNS record
 # for it points at the device's tailnet address. Today that is
-# grafana.spikeelectric.dev (flow-infrastructure, helm/monitoring); flow-dev
-# and ingest can follow one record at a time.
+# grafana.spikeelectric.dev (flow-infrastructure, helm/monitoring) and
+# dev.spikeelectric.dev (helm/flow there); ingest can follow the same way.
 #
 # Why a second Service rather than annotating k3s's: that Service is written
 # by a manifest under /var/lib/rancher/k3s on tina, and edits to it live

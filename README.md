@@ -239,8 +239,9 @@ on the tailnet is a DNS record for its name pointing at that device's
 100.x address, plus a certificate Traefik can serve for it; the record can
 be public (a tailnet address resolves to nothing for anyone outside) and the
 certificate comes from cert-manager through a DNS-01 ClusterIssuer that
-flow-infrastructure defines (`helm/letsencrypt`). Grafana is the first site
-on it; the Cloudflare tunnel's public hostnames carry the rest for now.
+flow-infrastructure defines (`helm/letsencrypt`). Grafana and Flow's dev
+tier (`grafana.` and `dev.spikeelectric.dev`) are on it; the Cloudflare
+tunnel's public hostnames carry the rest for now.
 
 ### Where the credential comes from
 

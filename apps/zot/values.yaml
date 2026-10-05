@@ -17,7 +17,7 @@ pvc:
 # The sync block makes zot a pull-through cache for Docker Hub: a request for
 # an image zot does not hold is fetched from Docker Hub once, stored on the
 # volume, and served locally from then on. The CI runners' dockerd points at
-# it with --registry-mirror (apps/arc-runners), so the postgis and flyway
+# it with --registry-mirror (flow-infrastructure, helm/arc-runners/values.yaml), so the postgis and flyway
 # images the integration shards pull cost one Docker Hub pull per tag, not one
 # per job. On-demand only, never polled: Docker Hub rate-limits pulls and has
 # no catalog, and the zot docs say so explicitly. Cached images are plain

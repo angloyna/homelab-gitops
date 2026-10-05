@@ -1,0 +1,29 @@
+# GitHub's push webhook to ArgoCD, which is otherwise tailnet-only. One
+# exact path on a Cloudflare Tunnel public hostname (set in Zero Trust by
+# hand: hooks.turdblossom.dev -> http://traefik.kube-system:80, same origin
+# as ingest), the way ingest.turdblossom.dev exposes the two telemetry push
+# endpoints. TLS ends at Cloudflare, so this listens on the plain `web`
+# entrypoint. Deliveries are HMAC-signed with webhook.github.secret
+# (externalsecret-webhook.yaml) and ArgoCD rejects unsigned ones; nothing
+# else of ArgoCD answers on this host. Backend: the same re-encrypting
+# Service the tailnet Ingress uses.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-webhook
+  namespace: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: hooks.turdblossom.dev
+      http:
+        paths:
+          - path: /api/webhook
+            pathType: Exact
+            backend:
+              service:
+                name: argocd-server-tailnet
+                port:
+                  number: 443

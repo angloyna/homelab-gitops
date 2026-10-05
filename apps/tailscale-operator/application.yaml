@@ -1,0 +1,43 @@
+# The Tailscale Kubernetes operator: puts cluster services on the tailnet.
+# Today that is one thing, the Traefik ingress controller (apps/traefik-tailnet),
+# so names like grafana.spikeelectric.dev can resolve to a tailnet address
+# and be reachable only from it. See README, "Tailscale".
+#
+# The one credential, the OAuth client the operator logs in with, is the
+# Secret `operator-oauth` in the tailscale namespace: created by hand, in
+# neither git nor Bitwarden, like the ESO bootstrap token.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tailscale-operator
+  namespace: argocd
+  annotations:
+    # Nothing in the flow chain depends on this and it depends on nothing;
+    # -1 only so it is up before traefik-tailnet (0) asks it for a device.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://pkgs.tailscale.com/helmcharts
+      chart: tailscale-operator
+      targetRevision: "1.102.4"
+      helm:
+        valueFiles:
+          - $values/apps/tailscale-operator/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tailscale
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The ProxyClass and ProxyGroup CRDs embed pod-template schemas, the
+      # same shape that put the ESO and ARC CRDs past the client-side-apply
+      # annotation ceiling. Server-side from the start rather than finding
+      # out.
+      - ServerSideApply=true

@@ -1,5 +1,5 @@
 # Matches the values already applied to the live "longhorn" Helm release
-# (chart 1.12.0, namespace longhorn-system), plus a fix for new volumes:
+# (first installed as chart 1.12.0, namespace longhorn-system), plus a fix for new volumes:
 # this is a 2-node cluster, so the default 3-replica ask can never fully
 # schedule and leaves every volume permanently "degraded".
 defaultSettings:

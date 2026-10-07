@@ -1,0 +1,29 @@
+# The Cloudflare Tunnel connector: cloudflared, one replica, carrying the
+# public hostnames (ingest.turdblossom.dev, hooks.turdblossom.dev) into the
+# cluster's Traefik. It was installed by hand in July 2026 and ran the
+# `latest` tag, so every pod restart silently moved it to whatever Cloudflare
+# had published; this adopts the Deployment into git and pins the image.
+# The tunnel token Secret (`tunnel-token`) stays hand-created (README,
+# "Cloudflare tunnel"); ArgoCD never sees it, so prune cannot remove it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudflared
+  namespace: argocd
+  annotations:
+    # Nothing depends on it and it depends on nothing in this repo; the
+    # hostnames it serves are configured in Cloudflare Zero Trust, not here.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/cloudflared/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudflared
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

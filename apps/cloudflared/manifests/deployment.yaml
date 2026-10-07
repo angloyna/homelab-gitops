@@ -1,0 +1,37 @@
+# cloudflared, as it was running by hand, with two changes: the image is
+# pinned to the version that was actually running when it was adopted
+# (2026.8.3, 2026-10-07) instead of `latest`, and imagePullPolicy follows
+# from that. Bump the tag here to upgrade; releases are at
+# https://github.com/cloudflare/cloudflared/releases. --no-autoupdate keeps
+# the binary from replacing itself inside the container, which would make
+# the pin meaningless.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.8.3
+          imagePullPolicy: IfNotPresent
+          args:
+            - tunnel
+            - --no-autoupdate
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tunnel-token
+                  key: token

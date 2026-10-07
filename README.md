@@ -25,13 +25,15 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Four credentials are created by hand and belong to neither git nor
+Five credentials are created by hand and belong to neither git nor
 Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
 flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
-runners use (see [CI runners](#ci-runners)), and Prefect's database
+runners use (see [CI runners](#ci-runners)), Prefect's database
 password, which is not Flow's and so stays out of Flow's Bitwarden (see
-[Prefect](#prefect)). The Tailscale operator's OAuth client used to be
-one of these; it now comes from Bitwarden (see [Tailscale](#tailscale)).
+[Prefect](#prefect)), and the Cloudflare tunnel token (see [Cloudflare
+tunnel](#cloudflare-tunnel)). The Tailscale operator's OAuth client used
+to be one of these; it now comes from Bitwarden (see
+[Tailscale](#tailscale)).
 
 ### How it fits together
 
@@ -309,6 +311,26 @@ What is still this repo's: the runners' dind pulls Docker Hub images through
 `zot` (`--registry-mirror`, pointed at `zot.zot.svc.cluster.local:5000`), so
 `apps/zot` has to exist and answer on that Service name; and the runner pods
 need `/dev/net/tun` on the node, which k3s provides.
+
+## Cloudflare tunnel
+
+`apps/cloudflared`: the one-replica cloudflared Deployment that connects the
+cluster to the Cloudflare Tunnel carrying the public hostnames
+(`ingest.turdblossom.dev`, `hooks.turdblossom.dev`) to Traefik. The
+hostnames and their origins live in Zero Trust, set by hand; this repo only
+runs the connector. It was hand-installed in July 2026 on the `latest` tag
+and adopted here on 2026-10-07 pinned to the version then running; upgrading
+is a tag bump in `manifests/deployment.yaml`.
+
+The tunnel token is the hand-created `tunnel-token` Secret in the
+`cloudflared` namespace, key `token`, from the tunnel's page in Zero Trust.
+It predates the Application and carries no ArgoCD labels, so prune leaves it
+alone. Recreating it on a new cluster:
+
+```bash
+kubectl create namespace cloudflared
+kubectl -n cloudflared create secret generic tunnel-token --from-literal=token='<tunnel token>'
+```
 
 ## Prefect
 

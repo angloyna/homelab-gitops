@@ -1,0 +1,41 @@
+# Kafbat UI (the maintained fork of provectus kafka-ui): a browser onto the
+# Kafka cluster in apps/kafka -- topics, messages, consumer groups and their
+# lag. Its own Application and namespace so it syncs, prunes and gets
+# upgraded independently of the broker; it only needs the in-cluster
+# bootstrap address, which it reads from values.yaml. Reachable on the
+# tailnet as the device `kafbat` (manifests/). No login: the tailnet is the
+# wall, as for Kafka itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafbat
+  namespace: argocd
+  annotations:
+    # With traefik-tailnet (3): the Service needs the Tailscale operator.
+    # It does not need kafka to exist first; it just shows the cluster as
+    # offline until it does.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://ui.charts.kafbat.io/
+      chart: kafka-ui
+      targetRevision: "1.6.5"
+      helm:
+        valueFiles:
+          - $values/apps/kafbat/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/kafbat/manifests
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kafbat
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,15 @@
+# strimzi-kafka-operator: the cluster operator, in the kafka namespace,
+# watching only that namespace. The cluster itself, its node pool and its
+# topics are in manifests/kafka.yaml; the operator turns them into pods,
+# Services and config, and runs the topic and user operators the Kafka
+# resource asks for.
+
+watchNamespaces:
+  - kafka
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi

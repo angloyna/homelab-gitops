@@ -400,6 +400,29 @@ PW=$(kubectl -n clickhouse get secret clickhouse-admin -o jsonpath='{.data.passw
 curl -s "http://clickhouse.tail60f7ac.ts.net:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
 ```
 
+## Kafka
+
+`kafka.tail60f7ac.ts.net:9094` (bootstrap; the broker is advertised as
+`kafka-0.tail60f7ac.ts.net:9094`), from `apps/kafka`: Strimzi's operator
+with local values, and `manifests/kafka.yaml`, the cluster `main` it runs.
+KRaft, one node that is both controller and broker, Kafka 4.3.1, pinned to
+louise next to ClickHouse, the log on a 20Gi Longhorn volume. Topics are git:
+the `events` topic is a `KafkaTopic` in the same file, and the topic
+operator keeps Kafka matching it. No auth; the tailnet is the wall. Three
+brokers and controllers wait for the third node (homelab-ansible,
+`docs/ha-plan.md`), and when that happens the replication-factor settings
+in the `Kafka` resource are the lines to raise.
+
+Inside the cluster the bootstrap is
+`main-kafka-bootstrap.kafka.svc.cluster.local:9092`, which is what the
+ClickHouse side uses. `http://kafbat.tail60f7ac.ts.net` is Kafbat UI, its
+own Application in `apps/kafbat`: topics, messages, consumer groups and
+their lag, which is the easiest way to watch the ClickHouse consumer keep
+up. It is separate so it syncs and upgrades on its own; it only knows the
+bootstrap address. [docs/kafka-to-clickhouse.md](docs/kafka-to-clickhouse.md)
+walks through producing to the topic and consuming it into a ClickHouse
+table with the Kafka engine and a materialized view.
+
 ## Gotchas
 
 **Migrations are an ArgoCD hook, not a tracked Job.** The old

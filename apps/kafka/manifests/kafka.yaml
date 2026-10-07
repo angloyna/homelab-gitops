@@ -1,0 +1,111 @@
+# One Kafka cluster, `main`, in KRaft mode with a single combined
+# controller+broker node. Strimzi names things <cluster>-...: the in-cluster
+# bootstrap is main-kafka-bootstrap.kafka.svc.cluster.local:9092, the pod is
+# main-combined-0, the topic operator is main-entity-operator.
+#
+# Everything replication-related is 1 because there is one broker; those
+# settings are what to raise when the pool grows to three. The external
+# listener is a Tailscale LoadBalancer per Service: Strimzi advertises the
+# hostname the Service status reports, so clients bootstrap at
+# kafka.<tailnet>.ts.net:9094 and are redirected to kafka-0.<tailnet>.ts.net:9094.
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: main
+  namespace: kafka
+  annotations:
+    strimzi.io/kraft: enabled
+    strimzi.io/node-pools: enabled
+    # After the operator and its CRDs in the same sync.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  kafka:
+    version: 4.3.1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tailnet
+        port: 9094
+        type: loadbalancer
+        tls: false
+        configuration:
+          class: tailscale
+          bootstrap:
+            annotations:
+              tailscale.com/hostname: kafka
+          brokers:
+            - broker: 0
+              annotations:
+                tailscale.com/hostname: kafka-0
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      # Keep an experiment's topics from growing without bound: 7 days.
+      log.retention.hours: 168
+      auto.create.topics.enable: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: combined
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: main
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    class: longhorn
+    size: 20Gi
+    deleteClaim: false
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  jvmOptions:
+    -Xms: 768m
+    -Xmx: 768m
+  template:
+    pod:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - louise
+---
+# The topic the tutorial writes to and ClickHouse reads from. Three
+# partitions so a consumer with kafka_num_consumers > 1 has something to
+# split; one replica because one broker.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: main
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000

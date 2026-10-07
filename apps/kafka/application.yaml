@@ -1,0 +1,42 @@
+# Kafka for the Kafka-to-ClickHouse experiments (docs/kafka-to-clickhouse.md):
+# Strimzi's operator (upstream chart, local values) plus manifests/ holding
+# the one cluster it runs. KRaft, a single node that is both controller and
+# broker, pinned to louise next to ClickHouse, log on Longhorn (sequential
+# writes, and the data is the point), reachable in-cluster on 9092 and on the
+# tailnet as the devices `kafka` (bootstrap) and `kafka-0` (the broker) on
+# 9094. Kafbat UI, a browser onto it, is its own app (apps/kafbat). No
+# auth: the tailnet is the wall, as for Prefect and ClickHouse.
+# Three brokers and three controllers wait for the third node, like etcd
+# and Keeper: a Raft quorum on two machines protects nothing.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka
+  namespace: argocd
+  annotations:
+    # With traefik-tailnet (3): the external listener needs the Tailscale operator.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://strimzi.io/charts/
+      chart: strimzi-kafka-operator
+      targetRevision: "1.2.0"
+      helm:
+        valueFiles:
+          - $values/apps/kafka/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/kafka/manifests
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kafka
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

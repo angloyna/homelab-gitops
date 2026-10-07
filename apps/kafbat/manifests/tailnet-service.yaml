@@ -1,0 +1,20 @@
+# Kafbat UI on the tailnet as the device `kafbat`: http://kafbat.<tailnet>.ts.net
+# A second Service over the chart's pods, the way prefect-tailnet is; the
+# selector is the one the chart puts on them (release name "kafbat").
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafbat-tailnet
+  namespace: kafbat
+  annotations:
+    tailscale.com/hostname: kafbat
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  selector:
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: kafbat
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

@@ -40,3 +40,13 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+  # Strimzi 1.2.0's Kafka CRD declares status.clusterSecurity with an empty
+  # `properties: {}`; the API server drops the empty map on admission, so
+  # the live CRD never matches the chart and the app sat OutOfSync with
+  # self-heal re-applying it forever. Ignore that one pointer.
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: kafkas.kafka.strimzi.io
+      jsonPointers:
+        - /spec/versions/0/schema/openAPIV3Schema/properties/status/properties/clusterSecurity/properties

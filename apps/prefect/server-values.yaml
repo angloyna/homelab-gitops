@@ -1,0 +1,36 @@
+# prefect-server: API + UI, scheduling and the other background services in
+# the one pod (runAsSeparateDeployment stays off; nothing here needs the
+# split). Database is the Postgres in manifests/, reached through the
+# hand-created `prefect-db` Secret's connection string (README, "Prefect").
+#
+# Reachability is manifests/tailnet-service.yaml, a Tailscale LoadBalancer
+# Service that makes the server its own tailnet device `prefect` -- no DNS
+# record, no certificate, no Traefik. So the chart's ingress stays off.
+
+postgresql:
+  enabled: false
+
+externalDatabase:
+  existingSecret: prefect-db
+  connectionStringSecretKey: connection-string
+
+server:
+  # No login: the UI is reachable only on the tailnet. Flip this on (and
+  # the matching block in worker-values.yaml) if that ever changes.
+  basicAuth:
+    enabled: false
+  # The browser calls the API at this URL, so it must be the address the
+  # browser uses: the device's MagicDNS name, not the in-cluster Service.
+  uiConfig:
+    prefectUiApiUrl: http://prefect.tail60f7ac.ts.net/api
+  # The server never talks to the Kubernetes API.
+  automountServiceAccountToken: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+ingress:
+  enabled: false

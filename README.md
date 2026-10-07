@@ -25,12 +25,13 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Three credentials are created by hand and belong to neither git nor
+Four credentials are created by hand and belong to neither git nor
 Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
-flow-infrastructure with (see [Flow](#flow)), and the GitHub PAT the CI
-runners use (see [CI runners](#ci-runners)). The Tailscale operator's
-OAuth client used to be a fourth; it now comes from Bitwarden (see
-[Tailscale](#tailscale)).
+flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
+runners use (see [CI runners](#ci-runners)), and Prefect's database
+password, which is not Flow's and so stays out of Flow's Bitwarden (see
+[Prefect](#prefect)). The Tailscale operator's OAuth client used to be
+one of these; it now comes from Bitwarden (see [Tailscale](#tailscale)).
 
 ### How it fits together
 
@@ -308,6 +309,42 @@ What is still this repo's: the runners' dind pulls Docker Hub images through
 `zot` (`--registry-mirror`, pointed at `zot.zot.svc.cluster.local:5000`), so
 `apps/zot` has to exist and answer on that Service name; and the runner pods
 need `/dev/net/tun` on the node, which k3s provides.
+
+## Prefect
+
+`http://prefect.tail60f7ac.ts.net`, from `apps/prefect`: Prefect 3 for
+workflow experiments, unrelated to Flow (Flow's jobs stay on the API's
+APScheduler; flow-infrastructure knows nothing about this). One
+Application with three sources: the upstream `prefect-server` and
+`prefect-worker` charts with local values, and `manifests/` for a
+Postgres 17 StatefulSet on Longhorn that the server uses as its external
+database (the chart's bundled option is Bitnami's Postgres 14 from the
+frozen `bitnamilegacy` registry) and the tailnet Service. The worker
+polls a Kubernetes work pool named `kubernetes`, creating it on first
+start, and runs flows as Jobs in the `prefect` namespace. No login on the
+UI, and no public DNS or certificate either: it is on the tailnet the way
+the dev databases are, a LoadBalancer Service with `loadBalancerClass:
+tailscale` that the operator turns into the device `prefect`, plain HTTP
+over WireGuard.
+
+The one hand-created piece is the `prefect-db` Secret, two keys that must
+agree: `password`, which initialises the Postgres role, and
+`connection-string`, the URL the server reads. Create it before the first
+sync; the volume is initialised from it once, so changing it later is an
+`ALTER ROLE` in psql and then both keys.
+
+```bash
+kubectl create namespace prefect
+PW=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+kubectl -n prefect create secret generic prefect-db \
+  --from-literal=password="$PW" \
+  --from-literal=connection-string="postgresql+asyncpg://prefect:${PW}@prefect-db.prefect.svc.cluster.local:5432/prefect"
+unset PW
+```
+
+From a laptop, `prefect config set PREFECT_API_URL=http://prefect.tail60f7ac.ts.net/api`
+points the CLI at it; `prefect deploy` against the `kubernetes` pool is
+the quickest way to see a flow run on the cluster.
 
 ## Gotchas
 

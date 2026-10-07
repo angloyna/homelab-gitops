@@ -1,0 +1,79 @@
+# Prefect's own Postgres: the official image, one replica, a Longhorn
+# volume. The prefect-server chart's bundled option is Bitnami's Postgres
+# 14 from the frozen "bitnamilegacy" registry, which is why this exists.
+#
+# Credentials come from the hand-created `prefect-db` Secret (README,
+# "Prefect"): `password` initialises the role here, `connection-string`
+# is the same password spelled as the URL the server reads. The volume is
+# initialised on first start only, so changing the password later means
+# ALTER ROLE in psql plus editing both keys, not just the Secret.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-db
+spec:
+  clusterIP: None
+  selector:
+    app: prefect-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prefect-db
+spec:
+  serviceName: prefect-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-db
+  template:
+    metadata:
+      labels:
+        app: prefect-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: prefect
+            - name: POSTGRES_DB
+              value: prefect
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-db
+                  key: password
+            # Longhorn mounts a lost+found at the volume root, which
+            # initdb refuses; point it one directory down.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "prefect", "-d", "prefect"]
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi

@@ -1,0 +1,25 @@
+# Prefect on the tailnet, the way the dev databases are: a LoadBalancer
+# Service with loadBalancerClass tailscale, which the operator turns into
+# a proxy pod that joins the tailnet as the device `prefect` (tag:k8s) and
+# forwards port 80 to the server's 4200. The UI is then
+# http://prefect.<tailnet>.ts.net with nothing else to set up: MagicDNS
+# names the device, and WireGuard carries the traffic, so there is no DNS
+# record to create and no certificate to issue. The selector is the one
+# the chart puts on the server pods (its own ClusterIP Service uses it).
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-tailnet
+  annotations:
+    tailscale.com/hostname: prefect
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  selector:
+    app.kubernetes.io/name: prefect-server
+    app.kubernetes.io/instance: prefect
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4200

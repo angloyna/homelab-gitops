@@ -1,0 +1,21 @@
+# prefect-worker: one Kubernetes-type worker polling the "kubernetes" work
+# pool on the in-cluster server. It creates the pool on first start if it
+# does not exist, and runs each flow as a Job in this namespace (the chart's
+# Role/RoleBinding grant exactly that). Flow code gets there however a
+# deployment says: an image, or pulled from git at run time.
+
+worker:
+  apiConfig: selfHostedServer
+  selfHostedServerApiConfig:
+    apiUrl: http://prefect-server.prefect.svc.cluster.local:4200/api
+    basicAuth:
+      enabled: false
+  config:
+    workPool: kubernetes
+    type: kubernetes
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi

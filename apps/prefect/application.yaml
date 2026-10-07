@@ -1,0 +1,46 @@
+# Prefect 3 (server + UI, a Kubernetes work-pool worker, and its own
+# Postgres) for workflow experiments. Not part of Flow: nothing in
+# flow-infrastructure knows about it, its database password is a
+# hand-created Secret (README, "Prefect"), and Flow's jobs stay on their
+# APScheduler. Three sources: the two upstream charts with local values,
+# and manifests/ for the Postgres StatefulSet the server chart points at
+# (its bundled subchart is Bitnami's Postgres 14; this is the official 17).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prefect
+  namespace: argocd
+  annotations:
+    # With argocd-tailnet (3): needs the ingress device and the
+    # letsencrypt-spikeelectric ClusterIssuer that flow (0) defines.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prefecthq.github.io/prefect-helm
+      chart: prefect-server
+      targetRevision: "2026.10.6163015"
+      helm:
+        valueFiles:
+          - $values/apps/prefect/server-values.yaml
+    - repoURL: https://prefecthq.github.io/prefect-helm
+      chart: prefect-worker
+      targetRevision: "2026.10.6163015"
+      helm:
+        valueFiles:
+          - $values/apps/prefect/worker-values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/prefect/manifests
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prefect
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

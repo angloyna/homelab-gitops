@@ -4,6 +4,14 @@
 # schedule and leaves every volume permanently "degraded".
 defaultSettings:
   defaultReplicaCount: 2
+  # tina's disk is 250G and every volume keeps a replica there, so its
+  # scheduling budget (disk minus the 30% OS reserve, times this
+  # percentage) filled up at ~172G committed while only ~47G was actually
+  # written; the next volume (prefect-db, 2026-10-07) came up degraded with
+  # its second replica unschedulable. Volumes are thin, so let Longhorn
+  # commit twice the budget; storage-minimal-available-percentage (25%)
+  # still stops scheduling when the disk itself runs low.
+  storageOverProvisioningPercentage: 200
 
 # The longhorn StorageClass bakes numberOfReplicas into its parameters,
 # which take precedence over defaultSettings.defaultReplicaCount for new

@@ -12,6 +12,12 @@ defaultSettings:
   # commit twice the budget; storage-minimal-available-percentage (25%)
   # still stops scheduling when the disk itself runs low.
   storageOverProvisioningPercentage: 200
+  # After a Longhorn upgrade the volumes keep running the old engine until
+  # each is upgraded; with this at 0 (the default) that never happens on
+  # its own. 1 lets Longhorn live-upgrade one volume per node at a time,
+  # which v1 volumes support while attached, so the data path follows the
+  # control plane without anyone clicking through the UI.
+  concurrentAutomaticEngineUpgradePerNodeLimit: 1
 
 # The longhorn StorageClass bakes numberOfReplicas into its parameters,
 # which take precedence over defaultSettings.defaultReplicaCount for new

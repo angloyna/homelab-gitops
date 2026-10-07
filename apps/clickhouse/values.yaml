@@ -1,0 +1,23 @@
+# altinity-clickhouse-operator: the operator and its metrics exporter, both
+# in the clickhouse namespace, watching only that namespace. Everything
+# about the database itself is in manifests/clickhouse.yaml; the operator
+# turns that ClickHouseInstallation into a StatefulSet, Services and config.
+
+watchNamespaces:
+  - clickhouse
+
+operator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

@@ -1,0 +1,40 @@
+# ClickHouse for experiments: Altinity's clickhouse-operator (upstream chart
+# with local values) plus manifests/ holding the one ClickHouseInstallation
+# it runs. Single shard, single replica, pinned to louise (tina is short on
+# memory), data on local-path rather than Longhorn (ClickHouse's merges are
+# write-heavy and the data is reloadable), reachable on the tailnet as the
+# device `clickhouse`. No Keeper and no replication until there are three
+# nodes (homelab-ansible docs/ha-plan.md): Keeper needs quorum like etcd.
+# The admin password is a hand-created Secret (README, "ClickHouse").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clickhouse
+  namespace: argocd
+  annotations:
+    # With traefik-tailnet (3): the Service needs the Tailscale operator.
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://docs.altinity.com/clickhouse-operator/
+      chart: altinity-clickhouse-operator
+      targetRevision: "0.27.4"
+      helm:
+        valueFiles:
+          - $values/apps/clickhouse/values.yaml
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/clickhouse/manifests
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clickhouse
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

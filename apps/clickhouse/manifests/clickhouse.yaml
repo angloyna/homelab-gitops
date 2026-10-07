@@ -1,0 +1,99 @@
+# One ClickHouse server. The operator (apps/clickhouse/values.yaml) renders
+# this into chi-clickhouse-main-0-0-0 and a Service named
+# clickhouse-clickhouse (the chart's "{chi}" naming).
+#
+# Choices, and why:
+# - 26.8 is the current LTS line; bump the tag here to upgrade, the operator
+#   rolls the pod.
+# - Pinned to louise: tina sits near 70% memory. The 6Gi limit is what
+#   ClickHouse sees as "RAM" (it reads the cgroup), and it caps itself at
+#   max_server_memory_usage_to_ram_ratio of that, so a runaway query fails
+#   instead of taking the node with it.
+# - local-path, not Longhorn: merges rewrite whole parts, and replicating
+#   that over the network to tina's small disk is the wrong trade for data
+#   that can be reloaded. The volume lives under /var/lib/rancher/k3s/
+#   storage on louise and dies with the node.
+# - The `default` user keeps the operator's pod-only network restriction;
+#   `admin` is the one you log in with, password from the hand-created
+#   Secret clickhouse-admin, open to any address (the tailnet is the wall).
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: clickhouse
+  namespace: clickhouse
+  annotations:
+    # After the operator and its CRDs in the same sync.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  defaults:
+    templates:
+      podTemplate: server
+      dataVolumeClaimTemplate: data
+      serviceTemplate: tailnet
+  configuration:
+    clusters:
+      - name: main
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+    users:
+      admin/password:
+        valueFrom:
+          secretKeyRef:
+            name: clickhouse-admin
+            key: password
+      admin/networks/ip:
+        - "::/0"
+      admin/access_management: 1
+    settings:
+      max_server_memory_usage_to_ram_ratio: 0.8
+  templates:
+    podTemplates:
+      - name: server
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values:
+                          - louise
+          containers:
+            - name: clickhouse
+              image: clickhouse/clickhouse-server:26.8
+              resources:
+                requests:
+                  cpu: "1"
+                  memory: 2Gi
+                limits:
+                  memory: 6Gi
+    volumeClaimTemplates:
+      - name: data
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+    serviceTemplates:
+      # The CHI-level Service, made a tailnet device the way Prefect is:
+      # http://clickhouse.<tailnet>.ts.net:8123 for HTTP and the play UI,
+      # clickhouse.<tailnet>.ts.net:9000 for the native protocol / clients.
+      - name: tailnet
+        generateName: "clickhouse-{chi}"
+        metadata:
+          annotations:
+            tailscale.com/hostname: clickhouse
+        spec:
+          type: LoadBalancer
+          loadBalancerClass: tailscale
+          ports:
+            - name: http
+              port: 8123
+              targetPort: 8123
+            - name: native
+              port: 9000
+              targetPort: 9000

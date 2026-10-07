@@ -25,13 +25,14 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Five credentials are created by hand and belong to neither git nor
+Six credentials are created by hand and belong to neither git nor
 Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
 flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
 runners use (see [CI runners](#ci-runners)), Prefect's database
-password, which is not Flow's and so stays out of Flow's Bitwarden (see
-[Prefect](#prefect)), and the Cloudflare tunnel token (see [Cloudflare
-tunnel](#cloudflare-tunnel)). The Tailscale operator's OAuth client used
+password and ClickHouse's admin password, which are not Flow's and so stay
+out of Flow's Bitwarden (see [Prefect](#prefect) and
+[ClickHouse](#clickhouse)), and the Cloudflare tunnel token (see
+[Cloudflare tunnel](#cloudflare-tunnel)). The Tailscale operator's OAuth client used
 to be one of these; it now comes from Bitwarden (see
 [Tailscale](#tailscale)).
 
@@ -367,6 +368,37 @@ unset PW
 From a laptop, `prefect config set PREFECT_API_URL=http://prefect.tail60f7ac.ts.net/api`
 points the CLI at it; `prefect deploy` against the `kubernetes` pool is
 the quickest way to see a flow run on the cluster.
+
+## ClickHouse
+
+`clickhouse.tail60f7ac.ts.net`, ports 8123 (HTTP, and the `/play` UI) and
+9000 (native), from `apps/clickhouse`: Altinity's clickhouse-operator with
+local values, and `manifests/clickhouse.yaml`, the one
+`ClickHouseInstallation` it runs. Single shard, single replica, ClickHouse
+26.8 (the LTS line; a tag bump upgrades it), pinned to louise with a 6Gi
+memory limit that ClickHouse treats as its RAM, data on a 50Gi `local-path`
+volume rather than Longhorn. That last choice means the data lives on
+louise's disk only and goes with the node; it is a target for experiments,
+reloadable, not a system of record. Replication and Keeper wait for the
+third node (homelab-ansible, `docs/ha-plan.md`): Keeper needs quorum the
+same way etcd does.
+
+Log in as `admin` with the hand-created `clickhouse-admin` Secret
+(key `password`) in the `clickhouse` namespace; the operator's `default`
+user stays restricted to the pods. Create the Secret before the first sync:
+
+```bash
+kubectl create namespace clickhouse
+kubectl -n clickhouse create secret generic clickhouse-admin \
+  --from-literal=password="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+```
+
+Then, from a laptop on the tailnet:
+
+```bash
+PW=$(kubectl -n clickhouse get secret clickhouse-admin -o jsonpath='{.data.password}' | base64 -d)
+curl -s "http://clickhouse.tail60f7ac.ts.net:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
+```
 
 ## Gotchas
 

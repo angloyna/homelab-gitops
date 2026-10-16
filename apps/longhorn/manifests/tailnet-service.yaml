@@ -1,0 +1,23 @@
+# Longhorn UI on the tailnet as the device `longhorn`: http://longhorn.<tailnet>.ts.net
+# A second Service over the chart's UI pods, the way kafbat-tailnet is; the
+# chart's own longhorn-frontend stays ClusterIP. The UI has no login and can
+# detach volumes and delete replicas, so the tailnet is the wall; it is not
+# on the LAN or behind traefik on purpose. (Until 2026-10-16 a hand-made
+# longhorn-ui-lb LoadBalancer held MetalLB's 192.168.1.241 with the wrong
+# targetPort and never worked; it was deleted in favour of this.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: longhorn-tailnet
+  namespace: longhorn-system
+  annotations:
+    tailscale.com/hostname: longhorn
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  selector:
+    app: longhorn-ui
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

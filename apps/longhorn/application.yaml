@@ -12,6 +12,10 @@ spec:
       helm:
         valueFiles:
           - $values/apps/longhorn/values.yaml
+    # manifests/: the tailnet Service for the UI (needs the Tailscale operator).
+    - repoURL: git@github.com:angloyna/homelab-gitops.git
+      targetRevision: HEAD
+      path: apps/longhorn/manifests
     - repoURL: git@github.com:angloyna/homelab-gitops.git
       targetRevision: HEAD
       ref: values

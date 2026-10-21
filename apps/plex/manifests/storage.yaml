@@ -1,0 +1,50 @@
+# Two volumes. The library is the Synology's, over NFS, read-only: a
+# static PersistentVolume (no provisioner) and a PVC bound to it by
+# name, with storageClassName "" so neither default class claims it.
+# nfs-common is on every node (homelab-ansible, roles/common).
+#
+# Plex's own state is a Longhorn volume, so it is replicated and backed
+# up like everything else and follows the pod if it ever moves off gene.
+# Sized for a large metadata set (Plex keeps artwork and analysis for
+# every item); Longhorn volumes are thin and can be expanded.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: plex-media
+spec:
+  capacity:
+    storage: 1Ti  # informational for a static NFS PV; not enforced
+  accessModes: ["ReadOnlyMany"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.1
+    - ro
+    - noatime
+  nfs:
+    server: 192.168.1.158
+    path: /volume1/plex_media
+    readOnly: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: plex-media
+spec:
+  accessModes: ["ReadOnlyMany"]
+  storageClassName: ""
+  volumeName: plex-media
+  resources:
+    requests:
+      storage: 1Ti
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: plex-config
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 100Gi

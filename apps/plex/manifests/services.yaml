@@ -1,0 +1,19 @@
+# One way in: a MetalLB address on 32400 with a fixed IP from the
+# homelab-pool range (192.168.1.240-250; Traefik holds .240), fixed so
+# ADVERTISE_IP in the Deployment can name it. Clients in the house
+# connect to it directly; anyone outside goes through plex.tv's Remote
+# Access, which Plex Pass covers. Deliberately not on the tailnet.
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.241
+spec:
+  type: LoadBalancer
+  selector:
+    app: plex
+  ports:
+    - name: plex
+      port: 32400
+      targetPort: plex

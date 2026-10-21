@@ -423,6 +423,103 @@ bootstrap address. [docs/kafka-to-clickhouse.md](docs/kafka-to-clickhouse.md)
 walks through producing to the topic and consuming it into a ClickHouse
 table with the Kafka engine and a materialized view.
 
+## Plex
+
+`http://192.168.1.241:32400/web`, from `apps/plex`: Plex Media Server,
+moved off the Synology on 2026-10-21. It runs on gene, pinned by nodeSelector, because
+gene's i7-1185G7 has an Iris Xe and Plex's Linux hardware transcoding is
+built around Intel Quick Sync (tina's UHD 630 would also do; louise's
+Radeon only half works with Plex). `/dev/dri` is a hostPath and the
+container is privileged, the only way a container may open a device node
+without a device plugin. The library stays on the Synology, mounted
+read-only over NFS at the same path it had there, so the restored
+database's folder paths still resolve. Plex's own state (`/config`) is a
+Longhorn volume. One Service, a MetalLB address on 32400 at a fixed IP,
+which `ADVERTISE_IP` names so clients connect to it rather than the pod
+IP. Not on the tailnet, on purpose: away from home, Plex's own Remote
+Access is the way in.
+
+Before the first sync, three things by hand, in this order. Argo will
+adopt the PVCs it finds already there.
+
+1. **NFS on the Synology.** Control Panel, File Services, NFS on; then
+   the media shared folder, Edit, NFS Permissions: one rule per node
+   (192.168.1.187, .62, .179), read-only, squash "map all users to
+   admin" or no mapping with a UID that can read the files. Note the
+   export path (`/volume1/<share>`) and put it, the NAS address and the
+   UID/GID into the `TODO`s in `apps/plex/manifests/`. Then stop Plex
+   in Package Center so the database is quiet while it is copied.
+
+2. **Restore the config volume.** The Plex package keeps its state at
+   `/volume1/PlexMediaServer/AppData/Plex Media Server`, readable only
+   by root. `sudo` over SSH needs a terminal, and a terminal mangles a
+   streamed tar, so the copy goes in two hops: the NAS tars it into the
+   media share (`Cache` and `Logs` skipped, they are large and rebuilt),
+   and a helper pod on gene, mounting both volumes, unpacks it straight
+   off NFS. Nothing passes through the Mac.
+
+   ```bash
+   ssh -t angloyna@192.168.1.158 'sudo tar -C "/volume1/PlexMediaServer/AppData/Plex Media Server" \
+     --exclude=./Cache --exclude=./Logs -cf /volume1/plex_media/plex-config.tar . && ls -lh /volume1/plex_media/plex-config.tar'
+   ```
+
+   Then the claims and the helper:
+
+   ```bash
+   kubectl create namespace plex
+   kubectl apply -n plex -f apps/plex/manifests/storage.yaml
+   cat <<'YAML' | kubectl apply -n plex -f -
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: plex-restore
+   spec:
+     nodeSelector:
+       kubernetes.io/hostname: gene
+     restartPolicy: Never
+     containers:
+       - name: shell
+         image: alpine:3.22
+         command: ["sleep", "infinity"]
+         volumeMounts:
+           - name: config
+             mountPath: /config
+           - name: media
+             mountPath: /media
+             readOnly: true
+     volumes:
+       - name: config
+         persistentVolumeClaim:
+           claimName: plex-config
+       - name: media
+         persistentVolumeClaim:
+           claimName: plex-media
+           readOnly: true
+   YAML
+   kubectl wait -n plex --for=condition=Ready pod/plex-restore --timeout=5m
+   kubectl exec -n plex plex-restore -- sh -c '
+     DST="/config/Library/Application Support/Plex Media Server"
+     mkdir -p "$DST" && tar -xf /media/plex-config.tar -C "$DST" \
+       && chown -R 1000:1000 /config && du -sh /config'
+   kubectl delete pod -n plex plex-restore
+   ssh -t angloyna@192.168.1.158 'sudo rm /volume1/plex_media/plex-config.tar'
+   ```
+
+   The chown matches `PUID`/`PGID` in the Deployment. The last line
+   removes the tar from the share so Plex does not see it as media.
+
+3. **Push.** Argo creates the Deployment and Services; the pod starts on
+   the restored volume as the same server, already claimed, with its
+   libraries, watch history and users. In Plex's settings afterwards:
+   Transcoder, tick hardware transcoding and HDR tone mapping (the
+   Iris Xe is listed); Network, LAN Networks `192.168.1.0/24`, and
+   check Remote Access reports reachable. Force a transcode from each
+   kind of client the household uses before uninstalling Plex from the
+   Synology; keep its data directory until then.
+
+Moving to tina is the nodeSelector and nothing else: the Longhorn volume
+attaches wherever the pod lands, and tina has Quick Sync too.
+
 ## Gotchas
 
 **Migrations are an ArgoCD hook, not a tracked Job.** The old

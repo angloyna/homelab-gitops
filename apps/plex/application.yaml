@@ -1,0 +1,31 @@
+# Plex Media Server, moved off the Synology (2026-10-21) onto gene, the
+# node with the Iris Xe iGPU: Plex's Linux hardware transcoding is built
+# around Intel Quick Sync, and louise's Radeon only half works with it.
+# The library stays on the Synology and is mounted read-only over NFS;
+# Plex's own state (database, metadata, Preferences.xml) lives on a
+# Longhorn volume restored from the NAS (README, "Plex"). Raw manifests,
+# no chart: it is one Deployment and one Service.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: plex
+  namespace: argocd
+  annotations:
+    # Needs only Longhorn for the config volume and MetalLB for the
+    # Service, both in place well before wave 0.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/plex/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: plex
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

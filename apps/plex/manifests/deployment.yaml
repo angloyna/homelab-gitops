@@ -1,0 +1,114 @@
+# linuxserver/plex rather than Plex's own image: its init adds the `abc`
+# user to whatever group owns /dev/dri/renderD128, so Quick Sync works
+# without hand-matching gene's render GID. Pinned to the build that was
+# current when this was written; bump the tag to upgrade. Tags are at
+# https://hub.docker.com/r/linuxserver/plex/tags (the -lsNNN ones).
+#
+# Pinned to gene for the Iris Xe. /dev/dri comes in as a hostPath, and
+# the container is privileged because that is the only way an
+# unprivileged-by-default container may open a device node the runtime
+# did not allow-list: the device cgroup blocks it otherwise. The tidier
+# route is Intel's GPU device plugin (gpu.intel.com/i915 as a resource),
+# worth doing if a second GPU workload ever appears. Privileged on a
+# single-tenant home node, serving a read-only NFS mount, is acceptable.
+#
+# Recreate, not RollingUpdate: the config volume is ReadWriteOnce and
+# Plex holds a SQLite database on it, so two pods must never overlap.
+#
+# No PLEX_CLAIM: the config volume is restored from the Synology, which
+# already carries the server's identity and claim (README, "Plex"). A
+# fresh volume would need one, from https://www.plex.tv/claim/.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plex
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: plex
+  template:
+    metadata:
+      labels:
+        app: plex
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gene
+      containers:
+        - name: plex
+          image: lscr.io/linuxserver/plex:1.43.5.11029-6bf8af3f0-ls329
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          env:
+            # The export squashes every client to the NAS admin ("map all
+            # users to admin"), so these only need to own /config.
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/Chicago
+            - name: VERSION
+              value: docker           # never self-update; the tag is the version
+            - name: ADVERTISE_IP
+              # The MetalLB address, so clients on the LAN connect to it
+              # rather than the pod IP they would otherwise be told.
+              value: http://192.168.1.241:32400/
+          ports:
+            - name: plex
+              containerPort: 32400
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            # Mounted at the same path the library had on the Synology, so
+            # every library's folder paths in the restored database still
+            # resolve and nothing is rescanned or re-matched. Change this
+            # and Plex would see a new location and a missing old one.
+            - name: media
+              mountPath: /volume1/plex_media
+              readOnly: true
+            - name: transcode
+              mountPath: /transcode
+            - name: dri
+              mountPath: /dev/dri
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 6Gi
+          startupProbe:
+            httpGet:
+              path: /identity
+              port: plex
+            periodSeconds: 10
+            failureThreshold: 60    # a restored library can take a while to open
+          livenessProbe:
+            httpGet:
+              path: /identity
+              port: plex
+            periodSeconds: 30
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: plex-config
+        - name: media
+          persistentVolumeClaim:
+            claimName: plex-media
+            readOnly: true
+        # Transcode scratch in RAM: gene has 15G, and this keeps the
+        # churn off both the NVMe and the Longhorn volume. Counted
+        # against the container's memory limit.
+        - name: transcode
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: Directory

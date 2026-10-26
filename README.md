@@ -315,7 +315,7 @@ need `/dev/net/tun` on the node, which k3s provides.
 
 ## Cloudflare tunnel
 
-`apps/cloudflared`: the one-replica cloudflared Deployment that connects the
+`apps/cloudflared`: the two-replica cloudflared Deployment that connects the
 cluster to the Cloudflare Tunnel carrying the public hostnames
 (`ingest.turdblossom.dev`, `hooks.turdblossom.dev`) to Traefik. The
 hostnames and their origins live in Zero Trust, set by hand; this repo only

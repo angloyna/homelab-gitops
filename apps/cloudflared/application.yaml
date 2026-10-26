@@ -1,4 +1,4 @@
-# The Cloudflare Tunnel connector: cloudflared, one replica, carrying the
+# The Cloudflare Tunnel connector: cloudflared, two replicas, carrying the
 # public hostnames (ingest.turdblossom.dev, hooks.turdblossom.dev) into the
 # cluster's Traefik. It was installed by hand in July 2026 and ran the
 # `latest` tag, so every pod restart silently moved it to whatever Cloudflare

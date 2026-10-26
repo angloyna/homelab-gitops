@@ -1,18 +1,32 @@
-# cloudflared, as it was running by hand, with two changes: the image is
-# pinned to the version that was actually running when it was adopted
-# (2026.8.3, 2026-10-07) instead of `latest`, and imagePullPolicy follows
-# from that. Bump the tag here to upgrade; releases are at
-# https://github.com/cloudflare/cloudflared/releases. --no-autoupdate keeps
-# the binary from replacing itself inside the container, which would make
-# the pin meaningless.
+# cloudflared, as it was running by hand, pinned instead of `latest`, and
+# imagePullPolicy follows from that. Bump the tag here to upgrade; releases
+# are at https://github.com/cloudflare/cloudflared/releases. --no-autoupdate
+# keeps the binary from replacing itself inside the container, which would
+# make the pin meaningless.
+#
+# Adopted at 2026.8.3 (2026-10-07). 2026.10.4 on 2026-10-26: Cloudflare's
+# notice that versions before 2026.10.2 still trust eight eMudhra (emSign)
+# intermediates with weak keys. Origins here are plain HTTP to Traefik, so
+# the stricter verification changes nothing on the origin side.
+#
+# Two replicas (both connectors of the same tunnel, same token) and a
+# rolling update that never takes the last one down, with readiness on
+# cloudflared's /ready, which only answers 200 once it is connected to
+# Cloudflare. That is what lets a version bump land with the tunnel
+# staying up; the metrics listener exists for that probe.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cloudflared
   namespace: cloudflared
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: cloudflared
@@ -23,12 +37,30 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:2026.8.3
+          image: cloudflare/cloudflared:2026.10.4
           imagePullPolicy: IfNotPresent
           args:
             - tunnel
             - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:2000
             - run
+          ports:
+            - name: metrics
+              containerPort: 2000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
           env:
             - name: TUNNEL_TOKEN
               valueFrom:

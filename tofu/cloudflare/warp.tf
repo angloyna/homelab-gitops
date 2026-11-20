@@ -8,10 +8,9 @@ resource "cloudflare_zero_trust_device_default_profile" "default" {
   include = [
     { address = var.cluster_service_cidr, description = "k3s Service CIDR, through the tunnel" },
   ]
-  # A profile is in include mode or exclude mode; the stock exclude list
-  # (RFC 1918 and friends) goes, explicitly, so the mode is not left for the
-  # API to decide.
-  exclude = []
+  # A profile is in include mode or exclude mode and the provider enforces
+  # it: setting `include` is the switch, and `exclude` may not appear. The
+  # stock exclude list (RFC 1918 and friends) goes with the mode.
 
   # As the account had them on 2026-11-20 (first plan), spelled out so a
   # later dashboard edit shows as drift.

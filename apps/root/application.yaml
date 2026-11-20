@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: root
-  namespace: argocd
+  namespace: argocd-homelab
 spec:
   project: default
   source:
@@ -14,7 +14,7 @@ spec:
       include: '*/application.yaml'
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: argocd-homelab
   syncPolicy:
     automated:
       prune: true

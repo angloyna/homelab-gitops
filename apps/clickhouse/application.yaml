@@ -10,7 +10,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: clickhouse
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # With traefik-tailnet (3): the Service needs the Tailscale operator.
     argocd.argoproj.io/sync-wave: "3"

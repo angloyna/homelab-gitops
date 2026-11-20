@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: external-secrets
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # Wave -2: after cert-manager (needs its CRDs for the Certificate below),
     # before flow-secrets (which needs ESO's ClusterSecretStore CRD).

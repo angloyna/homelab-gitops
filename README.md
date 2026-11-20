@@ -326,11 +326,11 @@ Until 2026-11 all of it was set by hand in the Zero Trust dashboard.
 |---|---|---|
 | the tunnel | `cloudflare_zero_trust_tunnel_cloudflared.cluster` | imported, `prevent_destroy`: a new tunnel would mean a new token in the cluster |
 | its public hostnames | `..._tunnel_cloudflared_config.cluster` | `hooks.` and `ingest.turdblossom.dev` to Traefik, both Flow's (flow-infrastructure); `var.public_hostnames` |
-| the private network | `..._tunnel_cloudflared_route.cluster_services` | `10.43.0.0/16`, k3s's Service CIDR, through the tunnel |
-| the WARP profile | `..._device_default_profile.default` and `..._local_domain_fallback.default` | include-mode split tunnel of that CIDR only; `svc.cluster.local` resolved by CoreDNS `10.43.0.10` |
+| the private network | `..._tunnel_cloudflared_route.cluster_services` and `.cluster_pods` | `10.43.0.0/16`, k3s's Service CIDR, and `10.42.0.0/16`, the pod CIDR: Kafka's advertised broker address is a headless-Service name that resolves to the broker pod |
+| the WARP profile | `..._device_default_profile.default` and `..._local_domain_fallback.default` | include-mode split tunnel of those two ranges only; `svc.cluster.local` resolved by CoreDNS `10.43.0.10`; the tailnet suffix forwarded to Tailscale's resolver (`var.tailnet_dns`) |
 | who may enroll | `..._access_application.warp_enrollment` + `..._access_policy.enroll` | one email, `var.login_email` |
 | which machine | `..._list.device_serials` + `..._device_posture_rule.known_device` | serial numbers, `var.device_serial_numbers` |
-| who gets in | `..._gateway_policy.cluster_allow` / `cluster_block` | the login on a listed machine may reach the CIDR; everyone else enrolled is blocked from it |
+| who gets in | `..._gateway_policy.cluster_allow` / `cluster_block` | the login on a listed machine may reach both ranges; everyone else enrolled is blocked from them |
 
 State is one object in the S3 bucket `angloyna-homelab-tofu-state` in
 the personal AWS account (profile `default`, region `us-east-1`), versioned,

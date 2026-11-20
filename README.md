@@ -29,9 +29,9 @@ committed under `bootstrap/` and are the only record of them.
 ```bash
 helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
 # Flow's (exists; this is how its values change)
-helm upgrade argocd argo/argo-cd --version 10.10.0 -n argocd -f bootstrap/argocd/values.yaml
+helm upgrade argocd argo/argo-cd --version 10.18.2 -n argocd -f bootstrap/argocd/values.yaml
 # this repo's
-helm install argocd-homelab argo/argo-cd --version 10.10.0 -n argocd-homelab --create-namespace -f bootstrap/argocd-homelab/values.yaml
+helm install argocd-homelab argo/argo-cd --version 10.18.2 -n argocd-homelab --create-namespace -f bootstrap/argocd-homelab/values.yaml
 ```
 
 What keeps them apart:

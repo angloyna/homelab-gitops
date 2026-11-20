@@ -1,7 +1,7 @@
 # The personal ArgoCD: release `argocd-homelab` in namespace
 # `argocd-homelab`, driving this repo (README, "ArgoCD instances").
 #
-#   helm install argocd-homelab argo/argo-cd --version 10.10.0 \
+#   helm install argocd-homelab argo/argo-cd --version 10.18.2 \
 #     -n argocd-homelab --create-namespace -f bootstrap/argocd-homelab/values.yaml
 #
 # No front door: it is reached with a port-forward (README). Same chart

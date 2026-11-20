@@ -3,7 +3,7 @@
 # runs with; the release was created before they were committed, so this
 # file is the record, and `helm upgrade` with it is how they change.
 #
-#   helm upgrade argocd argo/argo-cd --version 10.10.0 -n argocd \
+#   helm upgrade argocd argo/argo-cd --version 10.18.2 -n argocd \
 #     -f bootstrap/argocd/values.yaml
 #
 # The instance itself is Flow's and manages only spike-electric/

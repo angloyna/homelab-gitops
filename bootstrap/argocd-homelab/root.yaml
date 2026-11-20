@@ -1,0 +1,31 @@
+# The root of the personal ArgoCD: syncs apps/ in this repo, discovering
+# each app by its application.yaml, itself included (apps/root). Applied
+# by hand once, on the argocd-homelab instance:
+#
+#   kubectl apply -f bootstrap/argocd-homelab/root.yaml
+#
+# Identical to apps/root/application.yaml except for the namespace, which
+# is what makes it this instance's: ArgoCD only watches Applications in
+# its own namespace, so every application.yaml under apps/ names
+# argocd-homelab too (the handover in README, "ArgoCD instances").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd-homelab
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps
+    directory:
+      recurse: true
+      include: '*/application.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd-homelab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,22 @@
+# Flow's ArgoCD: the `argocd` Helm release in namespace `argocd`,
+# installed by hand (README, "ArgoCD instances"). These are the values it
+# runs with; the release was created before they were committed, so this
+# file is the record, and `helm upgrade` with it is how they change.
+#
+#   helm upgrade argocd argo/argo-cd --version 10.10.0 -n argocd \
+#     -f bootstrap/argocd/values.yaml
+#
+# The instance itself is Flow's and manages only spike-electric/
+# flow-infrastructure (its helm/argocd/); what it needs beyond the chart
+# (the repo PAT, the front door, the webhook) is documented there.
+
+global:
+  nodeSelector:
+    kubernetes.io/hostname: tina
+
+configs:
+  cm:
+    # Two ArgoCD instances share this cluster. The installation ID goes
+    # into every resource's tracking annotation, so each instance ignores
+    # what the other manages. Must differ from bootstrap/argocd-homelab.
+    installationID: flow

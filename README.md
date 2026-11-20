@@ -327,11 +327,12 @@ Until 2026-11 all of it was set by hand in the Zero Trust dashboard.
 | which machine | `..._list.device_serials` + `..._device_posture_rule.known_device` | serial numbers, `var.device_serial_numbers` |
 | who gets in | `..._gateway_policy.cluster_allow` / `cluster_block` | the login on a listed machine may reach the CIDR; everyone else enrolled is blocked from it |
 
-State is a Secret in the cluster (`backend "kubernetes"`, namespace
-`tofu-state`, written through the kubeconfig in use), encrypted
-client-side with a passphrase before it is written, the way the Spike
-repos encrypt their S3 state. Two credentials, both by hand and in the
-personal password manager, neither in git or Bitwarden:
+State is one object in the S3 bucket `angloyna-homelab-tofu-state` in
+the personal AWS account (profile `default`, region `us-east-1`), versioned,
+locked with S3's own lock file, and encrypted client-side with a
+passphrase before upload, the way the Spike repos keep theirs. Two
+credentials beyond the AWS profile, both by hand and in the personal
+password manager, neither in git or Bitwarden:
 
 - **An API token** (Cloudflare dashboard > profile > API Tokens), with
   Account permissions `Cloudflare Tunnel: Edit`, `Zero Trust: Edit`,
@@ -341,10 +342,20 @@ personal password manager, neither in git or Bitwarden:
 - **The state passphrase**, `openssl rand -base64 48`, exported as
   `TF_VAR_state_passphrase`.
 
-Setup, once:
+Setup, once. The bucket first, versioned so an overwritten state can be
+recovered and closed to the public:
 
 ```bash
-kubectl create namespace tofu-state
+export AWS_PROFILE=default
+aws s3api create-bucket --bucket angloyna-homelab-tofu-state --region us-east-1
+aws s3api put-bucket-versioning --bucket angloyna-homelab-tofu-state --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket angloyna-homelab-tofu-state --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+Then the module:
+
+```bash
+export AWS_PROFILE=default
 export CLOUDFLARE_API_TOKEN='…'
 export TF_VAR_state_passphrase='…'
 export TF_VAR_account_id='<Zero Trust > Settings > Account: Account ID>'

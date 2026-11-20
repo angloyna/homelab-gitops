@@ -8,14 +8,16 @@ terraform {
     }
   }
 
-  # State in the cluster this configures: a Secret in the tofu-state
-  # namespace, written through the kubeconfig in use. No extra credential
-  # and nothing to create first beyond the namespace (README). Encrypted
-  # client-side with the passphrase before it is written, like the Spike
-  # repos' S3 state, so the Secret holds ciphertext.
-  backend "kubernetes" {
-    secret_suffix = "cloudflare"
-    namespace     = "tofu-state"
+  # State in S3, in the personal AWS account (profile `default`), the way
+  # the Spike repos keep theirs: one versioned bucket, the object encrypted
+  # client-side with the passphrase before upload, so the bucket holds
+  # ciphertext. The bucket is created once by hand (README, "Cloudflare").
+  backend "s3" {
+    bucket       = "angloyna-homelab-tofu-state"
+    key          = "cloudflare/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 
   encryption {

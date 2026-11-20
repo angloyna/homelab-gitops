@@ -35,6 +35,12 @@ variable "cluster_service_cidr" {
   default     = "10.43.0.0/16"
 }
 
+variable "cluster_pod_cidr" {
+  description = "k3s's pod CIDR, routed as well: a headless Service (Strimzi's broker Service, for one) resolves to pod addresses, and a client that bootstraps by Service name is then sent to one."
+  type        = string
+  default     = "10.42.0.0/16"
+}
+
 variable "cluster_dns" {
   description = "CoreDNS's ClusterIP, the resolver WARP uses for the cluster's domain."
   type        = string

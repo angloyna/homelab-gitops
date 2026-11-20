@@ -7,6 +7,7 @@ resource "cloudflare_zero_trust_device_default_profile" "default" {
 
   include = [
     { address = var.cluster_service_cidr, description = "k3s Service CIDR, through the tunnel" },
+    { address = var.cluster_pod_cidr, description = "k3s pod CIDR, through the tunnel (headless Services)" },
   ]
   # A profile is in include mode or exclude mode and the provider enforces
   # it: setting `include` is the switch, and `exclude` may not appear. The

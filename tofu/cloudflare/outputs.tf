@@ -2,9 +2,12 @@ output "tunnel_id" {
   value = cloudflare_zero_trust_tunnel_cloudflared.cluster.id
 }
 
-output "cluster_route_id" {
-  description = "The CIDR route's id, for `tofu import` on a rebuilt state."
-  value       = cloudflare_zero_trust_tunnel_cloudflared_route.cluster_services.id
+output "cluster_route_ids" {
+  description = "The CIDR routes' ids (Service and pod ranges), for `tofu import` on a rebuilt state."
+  value = {
+    services = cloudflare_zero_trust_tunnel_cloudflared_route.cluster_services.id
+    pods     = cloudflare_zero_trust_tunnel_cloudflared_route.cluster_pods.id
+  }
 }
 
 output "posture_rule_id" {

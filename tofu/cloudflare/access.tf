@@ -51,9 +51,13 @@ resource "cloudflare_zero_trust_device_posture_rule" "known_device" {
 }
 
 # Gateway network policies, lowest precedence first: the one login on a
-# known device may reach the Service CIDR; everyone else enrolled is
-# blocked from it. Nothing outside the CIDR passes through WARP anyway
+# known device may reach the cluster's ranges; everyone else enrolled is
+# blocked from them. Nothing outside the ranges passes through WARP anyway
 # (include-mode split tunnel), so these are the whole policy.
+locals {
+  cluster_ranges = "net.dst.ip in {${var.cluster_service_cidr} ${var.cluster_pod_cidr}}"
+}
+
 resource "cloudflare_zero_trust_gateway_policy" "cluster_allow" {
   account_id  = var.account_id
   name        = "cluster: allow ${var.login_email} on a known device"
@@ -63,7 +67,7 @@ resource "cloudflare_zero_trust_gateway_policy" "cluster_allow" {
   action      = "allow"
   filters     = ["l4"]
 
-  traffic        = "net.dst.ip in {${var.cluster_service_cidr}}"
+  traffic        = local.cluster_ranges
   identity       = "identity.email == \"${var.login_email}\""
   device_posture = "any(device_posture.checks.passed[*] in {\"${cloudflare_zero_trust_device_posture_rule.known_device.id}\"})"
 }
@@ -77,5 +81,5 @@ resource "cloudflare_zero_trust_gateway_policy" "cluster_block" {
   action      = "block"
   filters     = ["l4"]
 
-  traffic = "net.dst.ip in {${var.cluster_service_cidr}}"
+  traffic = local.cluster_ranges
 }

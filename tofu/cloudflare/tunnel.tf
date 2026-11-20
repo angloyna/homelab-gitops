@@ -42,3 +42,13 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_route" "cluster_services" {
   network    = var.cluster_service_cidr
   comment    = "k3s Service CIDR (ClusterIPs); CoreDNS at ${var.cluster_dns}"
 }
+
+# The pod range too: Kafka's advertised broker address is a headless-Service
+# name that resolves to the broker pod, so a client that bootstrapped on the
+# Service CIDR is then sent here.
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "cluster_pods" {
+  account_id = var.account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.cluster.id
+  network    = var.cluster_pod_cidr
+  comment    = "k3s pod CIDR (headless Services resolve to pods)"
+}

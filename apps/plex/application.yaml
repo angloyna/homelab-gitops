@@ -9,7 +9,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: plex
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # Needs only Longhorn for the config volume and MetalLB for the
     # Service, both in place well before wave 0.

@@ -9,7 +9,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cloudflared
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # Nothing depends on it and it depends on nothing in this repo; the
     # hostnames it serves are configured in Cloudflare Zero Trust, not here.

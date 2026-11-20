@@ -12,7 +12,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: kafka
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # With traefik-tailnet (3): the external listener needs the Tailscale operator.
     argocd.argoproj.io/sync-wave: "3"

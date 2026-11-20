@@ -9,7 +9,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: kafbat
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # With traefik-tailnet (3): the Service needs the Tailscale operator.
     # It does not need kafka to exist first; it just shows the cluster as

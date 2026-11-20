@@ -9,7 +9,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: prefect
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # With argocd-tailnet (3): needs the ingress device and the
     # letsencrypt-spikeelectric ClusterIssuer that flow (0) defines.

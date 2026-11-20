@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cert-manager
-  namespace: argocd
+  namespace: argocd-homelab
   annotations:
     # Wave -3: everything below has to exist before the Bitwarden secret sync
     # can work. cert-manager -> external-secrets (needs a Certificate for the

@@ -6,7 +6,7 @@ each app by globbing `*/application.yaml`, so adding a directory with an
 `application.yaml` is all it takes to register one.
 
 Helm only — no Kustomize. Two shapes are in use: **upstream chart + local
-values** (`cert-manager`, `external-secrets`, `longhorn`, `zot`), a
+values** (`cert-manager`, `external-secrets`, `longhorn`), a
 multi-source Application with values referenced through a `$values` ref
 source; and **raw manifests** (`cloudflared`, `plex`), a directory of YAML.
 
@@ -85,7 +85,7 @@ it is also the recipe if an instance ever has to be rebuilt.
    uninstall hook:
    `kubectl -n argocd patch application longhorn --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]'`.
    Everything else deletes plainly: `kubectl -n argocd delete application
-   root cert-manager external-secrets longhorn cloudflared zot plex prefect
+   root cert-manager external-secrets longhorn cloudflared plex prefect
    clickhouse kafka kafbat`.
 6. Merge the PR that moves every `application.yaml` to
    `namespace: argocd-homelab`, then `kubectl apply -f
@@ -138,7 +138,7 @@ Healthy before starting the next:
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
 
 The platform apps above are this instance's whole bootstrap; everything
-else here (`longhorn`, `zot`, `cloudflared`, `plex`, `prefect`,
+else here (`longhorn`, `cloudflared`, `plex`, `prefect`,
 `clickhouse`, `kafka`, `kafbat`) has no wave and no ordering need. Flow's
 waves live in flow-infrastructure, under its own ArgoCD.
 
@@ -298,9 +298,9 @@ forever and `svc.cluster.local` never resolves.
 ## CI runners
 
 The GitHub Actions self-hosted runners for spike-electric/flow are Flow's
-CI and live in flow-infrastructure. The only thing of theirs here is
-`zot`, the pull-through mirror their dind pulls Docker Hub images through
-(see [Gotchas](#gotchas)).
+CI and live in flow-infrastructure, as does `zot`, the pull-through mirror
+their dind pulls Docker Hub images through (moved there 2026-11-20; it had
+no other consumer). Nothing of theirs is here.
 
 ## Cloudflare
 
@@ -595,10 +595,9 @@ kubectl drain tina --ignore-daemonsets --delete-emptydir-data --timeout=300s
 kubectl uncordon tina
 ```
 
-**`zot` is only the CI runners' pull-through mirror now** (flow-infrastructure,
-`helm/arc-runners/values.yaml`). Flow's images
-come from GHCR over DNS with a pull secret. The old chart addressed zot by
-ClusterIP because image pulls happen in the node's network namespace and
-never reach CoreDNS, so `*.svc.cluster.local` cannot resolve for them --
-still true for anything that pulls from zot directly; the runners' dind
-resolves it fine because dockerd runs inside the pod.
+**Image pulls by the node cannot resolve cluster names.** The old zot chart
+addressed the registry by ClusterIP because image pulls happen in the
+node's network namespace and never reach CoreDNS, so `*.svc.cluster.local`
+cannot resolve for them. Still true for anything that pulls from an
+in-cluster registry directly; a process inside a pod (the CI runners'
+dockerd, say) resolves it fine. zot itself lives in flow-infrastructure now.

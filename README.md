@@ -265,16 +265,35 @@ platform: cert-manager, External Secrets and its bootstrap token, Longhorn,
 and the tunnel hostnames below. The one thing that runs the other way is
 the tailnet, next.
 
-## Tailscale
+## Private network: WARP over the tunnel
 
-The tailnet is Spike's (`spikeelectric.github`), and so is the Tailscale
-Kubernetes operator: its OAuth client, the tailnet policy and the operator
-Application are all in flow-infrastructure. This repo still uses it. The
-`prefect`, `clickhouse` and `kafka` devices are LoadBalancer Services with
-`loadBalancerClass: tailscale` that the operator claims, which is what
-makes those three reachable from a laptop on that tailnet and from nowhere
-else. If Flow's operator ever goes away, those Services sit Pending and the
-three become LAN-only until they are exposed some other way.
+Prefect, ClickHouse, Kafka, Kafbat and the Longhorn UI have no front door.
+They are plain ClusterIP Services, and a laptop reaches them by their
+cluster DNS names through a **Cloudflare WARP private network**: the same
+tunnel that carries the public hostnames also routes the cluster's Service
+range to enrolled devices. Until 2026-11 they were Tailscale LoadBalancers
+on Spike's tailnet; that tailnet is Spike's, so nothing personal is on it
+any more. The Zero Trust side is set by hand; this is what it is.
+
+| what | where |
+|---|---|
+| Prefect UI and API | `http://prefect-server.prefect.svc.cluster.local:4200` |
+| ClickHouse HTTP / play UI, native | `clickhouse-clickhouse.clickhouse.svc.cluster.local` ports 8123, 9000 |
+| Kafka bootstrap | `main-kafka-bootstrap.kafka.svc.cluster.local:9092` |
+| Kafbat UI | `http://kafbat-kafka-ui.kafbat.svc.cluster.local` |
+| Longhorn UI | `http://longhorn-frontend.longhorn-system.svc.cluster.local` |
+
+The Zero Trust side of that (the tunnel's CIDR route, the WARP profile's
+split tunnel and DNS fallback, who may enroll, which machine, and the
+Gateway policy that admits only that login on that machine) is OpenTofu:
+`tofu/cloudflare/`, see [Cloudflare](#cloudflare). The laptop's part is
+`brew install --cask cloudflare-warp`, log in to the Zero Trust team,
+enroll, and the table above works. One thing to know if the laptop is
+also on a tailnet: WARP has to own system DNS, so Tailscale's DNS handling
+is turned off (`tailscale set --accept-dns=false`), and the module forwards
+the tailnet's MagicDNS suffix to Tailscale's resolver (`var.tailnet_dns`)
+so those names keep resolving. With both on, WARP sits in "connecting"
+forever and `svc.cluster.local` never resolves.
 
 ## CI runners
 
@@ -283,42 +302,108 @@ CI and live in flow-infrastructure. The only thing of theirs here is
 `zot`, the pull-through mirror their dind pulls Docker Hub images through
 (see [Gotchas](#gotchas)).
 
-## Cloudflare tunnel
+## Cloudflare
 
-`apps/cloudflared`: the two-replica cloudflared Deployment that connects the
-cluster to the Cloudflare Tunnel carrying the public hostnames
-(`ingest.turdblossom.dev`, `hooks.turdblossom.dev`) to Traefik. The
-hostnames and their origins live in Zero Trust, set by hand; this repo only
-runs the connector. It was hand-installed in July 2026 on the `latest` tag
-and adopted here on 2026-10-07 pinned to the version then running; upgrading
-is a tag bump in `manifests/deployment.yaml`.
-
-The tunnel token is the hand-created `tunnel-token` Secret in the
-`cloudflared` namespace, key `token`, from the tunnel's page in Zero Trust.
-It predates the Application and carries no ArgoCD labels, so prune leaves it
-alone. Recreating it on a new cluster:
+Two halves. **In the cluster**, `apps/cloudflared`: the two-replica
+cloudflared Deployment that connects the Cloudflare Tunnel. It was
+hand-installed in July 2026 on the `latest` tag and adopted here on
+2026-10-07 pinned to the version then running; upgrading is a tag bump in
+`manifests/deployment.yaml`. Its token is the hand-created `tunnel-token`
+Secret in the `cloudflared` namespace, key `token`, from the tunnel's page
+in Zero Trust; it predates the Application and carries no ArgoCD labels,
+so prune leaves it alone. Recreating it on a new cluster:
 
 ```bash
 kubectl create namespace cloudflared
 kubectl -n cloudflared create secret generic tunnel-token --from-literal=token='<tunnel token>'
 ```
 
+**In Cloudflare**, `tofu/cloudflare/`, an OpenTofu root module for
+everything the tunnel and the private network need on the account side.
+Until 2026-11 all of it was set by hand in the Zero Trust dashboard.
+
+| what | resource | note |
+|---|---|---|
+| the tunnel | `cloudflare_zero_trust_tunnel_cloudflared.cluster` | imported, `prevent_destroy`: a new tunnel would mean a new token in the cluster |
+| its public hostnames | `..._tunnel_cloudflared_config.cluster` | `hooks.` and `ingest.turdblossom.dev` to Traefik, both Flow's (flow-infrastructure); `var.public_hostnames` |
+| the private network | `..._tunnel_cloudflared_route.cluster_services` | `10.43.0.0/16`, k3s's Service CIDR, through the tunnel |
+| the WARP profile | `..._device_default_profile.default` and `..._local_domain_fallback.default` | include-mode split tunnel of that CIDR only; `svc.cluster.local` resolved by CoreDNS `10.43.0.10` |
+| who may enroll | `..._access_application.warp_enrollment` + `..._access_policy.enroll` | one email, `var.login_email` |
+| which machine | `..._list.device_serials` + `..._device_posture_rule.known_device` | serial numbers, `var.device_serial_numbers` |
+| who gets in | `..._gateway_policy.cluster_allow` / `cluster_block` | the login on a listed machine may reach the CIDR; everyone else enrolled is blocked from it |
+
+State is one object in the S3 bucket `angloyna-homelab-tofu-state` in
+the personal AWS account (profile `default`, region `us-east-1`), versioned,
+locked with S3's own lock file, and encrypted client-side with a
+passphrase before upload, the way the Spike repos keep theirs. Two
+credentials beyond the AWS profile, both by hand and in the personal
+password manager, neither in git or Bitwarden:
+
+- **An API token** (Cloudflare dashboard > profile > API Tokens), with
+  Account permissions `Cloudflare Tunnel: Edit`, `Zero Trust: Edit`,
+  `Access: Apps and Policies: Edit`, `Access: Device Posture: Edit`, and
+  `Account Settings: Read`, scoped to this account. Exported as
+  `CLOUDFLARE_API_TOKEN`.
+- **The state passphrase**, `openssl rand -base64 48`, exported as
+  `TF_VAR_homelab_state_passphrase` (its own name: the Spike repos' `TF_VAR_state_passphrase`
+  is a different secret and may be set in the same shell).
+
+Setup, once. The bucket first, versioned so an overwritten state can be
+recovered and closed to the public:
+
+```bash
+export AWS_PROFILE=default
+aws s3api create-bucket --bucket angloyna-homelab-tofu-state --region us-east-1
+aws s3api put-bucket-versioning --bucket angloyna-homelab-tofu-state --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket angloyna-homelab-tofu-state --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+Then the module:
+
+```bash
+export AWS_PROFILE=default
+export CLOUDFLARE_API_TOKEN='…'
+export TF_VAR_homelab_state_passphrase='…'
+export TF_VAR_account_id='<Zero Trust > Settings > Account: Account ID>'
+export TF_VAR_tunnel_id='<Networks > Tunnels > the tunnel: Tunnel ID>'
+export TF_VAR_tunnel_name='<its name there>'
+export TF_VAR_login_email='you@example.com'
+export TF_VAR_device_serial_numbers='["<serial from: system_profiler SPHardwareDataType>"]'
+cd tofu/cloudflare && tofu init
+# the CIDR route was created in the dashboard before the module; adopt it
+tofu import cloudflare_zero_trust_tunnel_cloudflared_route.cluster_services "$TF_VAR_account_id/<Networks > Routes > the route's ID>"
+tofu plan
+```
+
+The plan's imports (the tunnel, its config, the default WARP profile and
+its fallback list) should show no changes beyond what this module adds:
+the route's comment, the profile's include list, the fallback entry for
+the cluster, and the enrollment, posture and Gateway objects as creates.
+If the plan wants to create `warp_enrollment` but apply answers that an
+application of type `warp` already exists, Zero Trust made one when
+enrollment permissions were first touched in the dashboard: import it
+with `tofu import cloudflare_zero_trust_access_application.warp_enrollment
+"$TF_VAR_account_id/<its id, from Access > Applications>"` and plan again.
+Then `tofu apply`, and the private network is live for the listed machine
+once WARP on it is enrolled with that login.
+
+A second laptop is one more serial in `TF_VAR_device_serial_numbers`. A
+third public hostname is one more entry in `var.public_hostnames`.
+
 ## Prefect
 
-`http://prefect.tail60f7ac.ts.net`, from `apps/prefect`: Prefect 3 for
-workflow experiments, unrelated to Flow (Flow's jobs stay on the API's
-APScheduler; flow-infrastructure knows nothing about this). One
-Application with three sources: the upstream `prefect-server` and
-`prefect-worker` charts with local values, and `manifests/` for a
-Postgres 17 StatefulSet on Longhorn that the server uses as its external
-database (the chart's bundled option is Bitnami's Postgres 14 from the
-frozen `bitnamilegacy` registry) and the tailnet Service. The worker
-polls a Kubernetes work pool named `kubernetes`, creating it on first
-start, and runs flows as Jobs in the `prefect` namespace. No login on the
-UI, and no public DNS or certificate either: it is on the tailnet the way
-the dev databases are, a LoadBalancer Service with `loadBalancerClass:
-tailscale` that the operator turns into the device `prefect`, plain HTTP
-over WireGuard.
+`http://prefect-server.prefect.svc.cluster.local:4200` over the private
+route, from `apps/prefect`: Prefect 3 for workflow experiments, unrelated
+to Flow (Flow's jobs stay on the API's APScheduler; flow-infrastructure
+knows nothing about this). One Application with three sources: the
+upstream `prefect-server` and `prefect-worker` charts with local values,
+and `manifests/` for a Postgres 17 StatefulSet on Longhorn that the server
+uses as its external database (the chart's bundled option is Bitnami's
+Postgres 14 from the frozen `bitnamilegacy` registry). The worker polls a
+Kubernetes work pool named `kubernetes`, creating it on first start, and
+runs flows as Jobs in the `prefect` namespace. No login on the UI and no
+public DNS or certificate: the private route is the wall (see [Private
+network](#private-network-warp-over-the-tunnel)).
 
 The one hand-created piece is the `prefect-db` Secret, two keys that must
 agree: `password`, which initialises the Postgres role, and
@@ -335,14 +420,14 @@ kubectl -n prefect create secret generic prefect-db \
 unset PW
 ```
 
-From a laptop, `prefect config set PREFECT_API_URL=http://prefect.tail60f7ac.ts.net/api`
+From the laptop, `prefect config set PREFECT_API_URL=http://prefect-server.prefect.svc.cluster.local:4200/api`
 points the CLI at it; `prefect deploy` against the `kubernetes` pool is
 the quickest way to see a flow run on the cluster.
 
 ## ClickHouse
 
-`clickhouse.tail60f7ac.ts.net`, ports 8123 (HTTP, and the `/play` UI) and
-9000 (native), from `apps/clickhouse`: Altinity's clickhouse-operator with
+`clickhouse-clickhouse.clickhouse.svc.cluster.local` over the private route,
+ports 8123 (HTTP, and the `/play` UI) and 9000 (native), from `apps/clickhouse`: Altinity's clickhouse-operator with
 local values, and `manifests/clickhouse.yaml`, the one
 `ClickHouseInstallation` it runs. Single shard, single replica, ClickHouse
 26.8 (the LTS line; a tag bump upgrades it), pinned to louise with a 6Gi
@@ -363,29 +448,29 @@ kubectl -n clickhouse create secret generic clickhouse-admin \
   --from-literal=password="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
 ```
 
-Then, from a laptop on the tailnet:
+Then, from the laptop:
 
 ```bash
 PW=$(kubectl -n clickhouse get secret clickhouse-admin -o jsonpath='{.data.password}' | base64 -d)
-curl -s "http://clickhouse.tail60f7ac.ts.net:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
+curl -s "http://clickhouse-clickhouse.clickhouse.svc.cluster.local:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
 ```
 
 ## Kafka
 
-`kafka.tail60f7ac.ts.net:9094` (bootstrap; the broker is advertised as
-`kafka-0.tail60f7ac.ts.net:9094`), from `apps/kafka`: Strimzi's operator
+`main-kafka-bootstrap.kafka.svc.cluster.local:9092` over the private route
+(the broker advertises itself by its own `*.svc.cluster.local` name, which
+the route's DNS fallback resolves), from `apps/kafka`: Strimzi's operator
 with local values, and `manifests/kafka.yaml`, the cluster `main` it runs.
 KRaft, one node that is both controller and broker, Kafka 4.3.1, pinned to
 louise next to ClickHouse, the log on a 20Gi Longhorn volume. Topics are git:
 the `events` topic is a `KafkaTopic` in the same file, and the topic
-operator keeps Kafka matching it. No auth; the tailnet is the wall. Three
+operator keeps Kafka matching it. No auth; the private route is the wall. Three
 brokers and controllers wait for the third node (homelab-ansible,
 `docs/ha-plan.md`), and when that happens the replication-factor settings
 in the `Kafka` resource are the lines to raise.
 
-Inside the cluster the bootstrap is
-`main-kafka-bootstrap.kafka.svc.cluster.local:9092`, which is what the
-ClickHouse side uses. `http://kafbat.tail60f7ac.ts.net` is Kafbat UI, its
+The same bootstrap address is what the ClickHouse side uses inside the
+cluster. `http://kafbat-kafka-ui.kafbat.svc.cluster.local` is Kafbat UI, its
 own Application in `apps/kafbat`: topics, messages, consumer groups and
 their lag, which is the easiest way to watch the ClickHouse consumer keep
 up. It is separate so it syncs and upgrades on its own; it only knows the

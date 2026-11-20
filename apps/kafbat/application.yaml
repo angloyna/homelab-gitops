@@ -2,19 +2,16 @@
 # Kafka cluster in apps/kafka -- topics, messages, consumer groups and their
 # lag. Its own Application and namespace so it syncs, prunes and gets
 # upgraded independently of the broker; it only needs the in-cluster
-# bootstrap address, which it reads from values.yaml. Reachable on the
-# tailnet as the device `kafbat` (manifests/). No login: the tailnet is the
-# wall, as for Kafka itself.
+# bootstrap address, which it reads from values.yaml. Reached over the WARP
+# private route at the chart's own ClusterIP Service (README, "Private
+# network"). No login: the private route is the wall, as for Kafka itself.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: kafbat
   namespace: argocd-homelab
-  annotations:
-    # With traefik-tailnet (3): the Service needs the Tailscale operator.
-    # It does not need kafka to exist first; it just shows the cluster as
-    # offline until it does.
-    argocd.argoproj.io/sync-wave: "3"
+  # No wave: it does not need kafka to exist first; it just shows the
+  # cluster as offline until it does.
 spec:
   project: default
   sources:
@@ -24,9 +21,6 @@ spec:
       helm:
         valueFiles:
           - $values/apps/kafbat/values.yaml
-    - repoURL: git@github.com:angloyna/homelab-gitops.git
-      targetRevision: HEAD
-      path: apps/kafbat/manifests
     - repoURL: git@github.com:angloyna/homelab-gitops.git
       targetRevision: HEAD
       ref: values

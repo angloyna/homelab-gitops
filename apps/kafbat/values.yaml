@@ -1,8 +1,9 @@
 # kafka-ui chart: one cluster, `main`, by its in-cluster bootstrap in the
 # kafka namespace. Rendered with release name "kafbat", so the chart names
-# its objects kafbat-kafka-ui. The chart's Service cannot carry a
-# loadBalancerClass, so it stays ClusterIP and manifests/tailnet-service.yaml
-# is the door.
+# its objects kafbat-kafka-ui, and its ClusterIP Service is what the WARP
+# private route reaches. The chart's Service cannot carry a
+# loadBalancerClass and does not need one: ClusterIP is the door, over the
+# WARP private route (README, "Private network").
 #
 # The UI can produce messages and create or edit topics as well as read.
 # The topics git owns (KafkaTopic resources in apps/kafka) are put back by

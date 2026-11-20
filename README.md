@@ -304,8 +304,9 @@ no other consumer). Nothing of theirs is here.
 
 ## Renovate
 
-`apps/renovate`: a CronJob running Renovate against this repo and
-spike-electric/flow-infrastructure, daily at 06:00 Chicago. It reads
+`apps/renovate`: a CronJob running Renovate against this repo,
+spike-electric/flow-infrastructure and spike-electric/flow, daily at 06:00
+Chicago. It reads
 every version pin Renovate knows how to parse, checks upstream, and opens
 pull requests with the changelog; nothing is merged by it. The admin
 config (`manifests/configmap.yaml`) names the two repositories and

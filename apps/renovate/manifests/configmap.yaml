@@ -14,6 +14,7 @@ data:
       repositories: [
         "angloyna/homelab-gitops",
         "spike-electric/flow-infrastructure",
+        "spike-electric/flow",
       ],
       // Commits are authored as the token's account under its GitHub
       // noreply address; without this Renovate falls back to a Mend-owned

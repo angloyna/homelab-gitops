@@ -4,10 +4,12 @@
 # main-combined-0, the topic operator is main-entity-operator.
 #
 # Everything replication-related is 1 because there is one broker; those
-# settings are what to raise when the pool grows to three. The external
-# listener is a Tailscale LoadBalancer per Service: Strimzi advertises the
-# hostname the Service status reports, so clients bootstrap at
-# kafka.<tailnet>.ts.net:9094 and are redirected to kafka-0.<tailnet>.ts.net:9094.
+# settings are what to raise when the pool grows to three. One listener,
+# internal: a laptop reaches it over the WARP private route (README,
+# "Private network") at the same bootstrap address the cluster uses, and
+# useServiceDnsDomain makes the broker advertise its full
+# *.svc.cluster.local name, which that route's DNS fallback resolves. Until
+# 2026-11 a second listener was a Tailscale LoadBalancer on Spike's tailnet.
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
@@ -26,19 +28,8 @@ spec:
         port: 9092
         type: internal
         tls: false
-      - name: tailnet
-        port: 9094
-        type: loadbalancer
-        tls: false
         configuration:
-          class: tailscale
-          bootstrap:
-            annotations:
-              tailscale.com/hostname: kafka
-          brokers:
-            - broker: 0
-              annotations:
-                tailscale.com/hostname: kafka-0
+          useServiceDnsDomain: true
     config:
       offsets.topic.replication.factor: 1
       transaction.state.log.replication.factor: 1

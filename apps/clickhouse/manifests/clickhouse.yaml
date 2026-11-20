@@ -15,7 +15,7 @@
 #   storage on louise and dies with the node.
 # - The `default` user keeps the operator's pod-only network restriction;
 #   `admin` is the one you log in with, password from the hand-created
-#   Secret clickhouse-admin, open to any address (the tailnet is the wall).
+#   Secret clickhouse-admin, open to any address (the private route is the wall).
 apiVersion: clickhouse.altinity.com/v1
 kind: ClickHouseInstallation
 metadata:
@@ -29,7 +29,7 @@ spec:
     templates:
       podTemplate: server
       dataVolumeClaimTemplate: data
-      serviceTemplate: tailnet
+      serviceTemplate: internal
   configuration:
     clusters:
       - name: main
@@ -79,17 +79,15 @@ spec:
             requests:
               storage: 50Gi
     serviceTemplates:
-      # The CHI-level Service, made a tailnet device the way Prefect is:
-      # http://clickhouse.<tailnet>.ts.net:8123 for HTTP and the play UI,
-      # clickhouse.<tailnet>.ts.net:9000 for the native protocol / clients.
-      - name: tailnet
+      # The CHI-level Service, clickhouse-clickhouse, ClusterIP only: reached
+      # from a laptop over the WARP private route (README, "Private
+      # network"), http://clickhouse-clickhouse.clickhouse.svc.cluster.local:8123
+      # for HTTP and the play UI, :9000 for the native protocol. Until
+      # 2026-11 it was a Tailscale LoadBalancer on Spike's tailnet.
+      - name: internal
         generateName: "clickhouse-{chi}"
-        metadata:
-          annotations:
-            tailscale.com/hostname: clickhouse
         spec:
-          type: LoadBalancer
-          loadBalancerClass: tailscale
+          type: ClusterIP
           ports:
             - name: http
               port: 8123

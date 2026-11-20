@@ -12,10 +12,9 @@ spec:
       helm:
         valueFiles:
           - $values/apps/longhorn/values.yaml
-    # manifests/: the tailnet Service for the UI (needs the Tailscale operator).
-    - repoURL: git@github.com:angloyna/homelab-gitops.git
-      targetRevision: HEAD
-      path: apps/longhorn/manifests
+    # The UI (the chart's longhorn-frontend, ClusterIP) is reached over the
+    # WARP private route (README, "Private network"); it has no login and
+    # can delete replicas, so it is on nothing else.
     - repoURL: git@github.com:angloyna/homelab-gitops.git
       targetRevision: HEAD
       ref: values

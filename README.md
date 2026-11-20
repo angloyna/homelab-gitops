@@ -265,16 +265,49 @@ platform: cert-manager, External Secrets and its bootstrap token, Longhorn,
 and the tunnel hostnames below. The one thing that runs the other way is
 the tailnet, next.
 
-## Tailscale
+## Private network: WARP over the tunnel
 
-The tailnet is Spike's (`spikeelectric.github`), and so is the Tailscale
-Kubernetes operator: its OAuth client, the tailnet policy and the operator
-Application are all in flow-infrastructure. This repo still uses it. The
-`prefect`, `clickhouse` and `kafka` devices are LoadBalancer Services with
-`loadBalancerClass: tailscale` that the operator claims, which is what
-makes those three reachable from a laptop on that tailnet and from nowhere
-else. If Flow's operator ever goes away, those Services sit Pending and the
-three become LAN-only until they are exposed some other way.
+Prefect, ClickHouse, Kafka, Kafbat and the Longhorn UI have no front door.
+They are plain ClusterIP Services, and a laptop reaches them by their
+cluster DNS names through a **Cloudflare WARP private network**: the same
+tunnel that carries the public hostnames also routes the cluster's Service
+range to enrolled devices. Until 2026-11 they were Tailscale LoadBalancers
+on Spike's tailnet; that tailnet is Spike's, so nothing personal is on it
+any more. The Zero Trust side is set by hand; this is what it is.
+
+| what | where |
+|---|---|
+| Prefect UI and API | `http://prefect-server.prefect.svc.cluster.local:4200` |
+| ClickHouse HTTP / play UI, native | `clickhouse-clickhouse.clickhouse.svc.cluster.local` ports 8123, 9000 |
+| Kafka bootstrap | `main-kafka-bootstrap.kafka.svc.cluster.local:9092` |
+| Kafbat UI | `http://kafbat-kafka-ui.kafbat.svc.cluster.local` |
+| Longhorn UI | `http://longhorn-frontend.longhorn-system.svc.cluster.local` |
+
+Zero Trust, once:
+
+1. **Tunnel route.** Networks > Tunnels > the tunnel > Private Network:
+   add `10.43.0.0/16`, k3s's Service CIDR. The cloudflared pods are inside
+   the cluster, so every ClusterIP is one hop for them.
+2. **DNS.** Settings > WARP Client > the default device profile > Local
+   Domain Fallback: `svc.cluster.local` resolved by `10.43.0.10` (CoreDNS,
+   inside the routed range). That is what turns the names above into
+   addresses on the laptop.
+3. **Split tunnel, include mode.** Same profile: Include IPs and domains,
+   only `10.43.0.0/16`. Nothing else on the laptop goes through WARP, at
+   home or away.
+4. **Only this computer.** Settings > WARP Client > Device enrollment
+   permissions: one rule, the login email, one-time PIN. Settings > WARP
+   Client > Device posture: a Serial Number list holding the Mac's serial.
+   Then Gateway > Firewall policies > Network: allow destination
+   `10.43.0.0/16` when the identity is that email **and** the serial-number
+   check passes; a second rule blocks `10.43.0.0/16` for everything else.
+   Enrollment alone admits any device that email can log in from; the
+   posture rule is what makes it one machine.
+
+The laptop: `brew install --cask cloudflare-warp`, log in to the Zero
+Trust team, enroll, and the table above works. The connector in the
+cluster needs nothing: `warp-routing` is enabled on the tunnel's settings
+page, and the pods already reach ClusterIPs.
 
 ## CI runners
 
@@ -305,20 +338,18 @@ kubectl -n cloudflared create secret generic tunnel-token --from-literal=token='
 
 ## Prefect
 
-`http://prefect.tail60f7ac.ts.net`, from `apps/prefect`: Prefect 3 for
-workflow experiments, unrelated to Flow (Flow's jobs stay on the API's
-APScheduler; flow-infrastructure knows nothing about this). One
-Application with three sources: the upstream `prefect-server` and
-`prefect-worker` charts with local values, and `manifests/` for a
-Postgres 17 StatefulSet on Longhorn that the server uses as its external
-database (the chart's bundled option is Bitnami's Postgres 14 from the
-frozen `bitnamilegacy` registry) and the tailnet Service. The worker
-polls a Kubernetes work pool named `kubernetes`, creating it on first
-start, and runs flows as Jobs in the `prefect` namespace. No login on the
-UI, and no public DNS or certificate either: it is on the tailnet the way
-the dev databases are, a LoadBalancer Service with `loadBalancerClass:
-tailscale` that the operator turns into the device `prefect`, plain HTTP
-over WireGuard.
+`http://prefect-server.prefect.svc.cluster.local:4200` over the private
+route, from `apps/prefect`: Prefect 3 for workflow experiments, unrelated
+to Flow (Flow's jobs stay on the API's APScheduler; flow-infrastructure
+knows nothing about this). One Application with three sources: the
+upstream `prefect-server` and `prefect-worker` charts with local values,
+and `manifests/` for a Postgres 17 StatefulSet on Longhorn that the server
+uses as its external database (the chart's bundled option is Bitnami's
+Postgres 14 from the frozen `bitnamilegacy` registry). The worker polls a
+Kubernetes work pool named `kubernetes`, creating it on first start, and
+runs flows as Jobs in the `prefect` namespace. No login on the UI and no
+public DNS or certificate: the private route is the wall (see [Private
+network](#private-network-warp-over-the-tunnel)).
 
 The one hand-created piece is the `prefect-db` Secret, two keys that must
 agree: `password`, which initialises the Postgres role, and
@@ -335,14 +366,14 @@ kubectl -n prefect create secret generic prefect-db \
 unset PW
 ```
 
-From a laptop, `prefect config set PREFECT_API_URL=http://prefect.tail60f7ac.ts.net/api`
+From the laptop, `prefect config set PREFECT_API_URL=http://prefect-server.prefect.svc.cluster.local:4200/api`
 points the CLI at it; `prefect deploy` against the `kubernetes` pool is
 the quickest way to see a flow run on the cluster.
 
 ## ClickHouse
 
-`clickhouse.tail60f7ac.ts.net`, ports 8123 (HTTP, and the `/play` UI) and
-9000 (native), from `apps/clickhouse`: Altinity's clickhouse-operator with
+`clickhouse-clickhouse.clickhouse.svc.cluster.local` over the private route,
+ports 8123 (HTTP, and the `/play` UI) and 9000 (native), from `apps/clickhouse`: Altinity's clickhouse-operator with
 local values, and `manifests/clickhouse.yaml`, the one
 `ClickHouseInstallation` it runs. Single shard, single replica, ClickHouse
 26.8 (the LTS line; a tag bump upgrades it), pinned to louise with a 6Gi
@@ -363,29 +394,29 @@ kubectl -n clickhouse create secret generic clickhouse-admin \
   --from-literal=password="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
 ```
 
-Then, from a laptop on the tailnet:
+Then, from the laptop:
 
 ```bash
 PW=$(kubectl -n clickhouse get secret clickhouse-admin -o jsonpath='{.data.password}' | base64 -d)
-curl -s "http://clickhouse.tail60f7ac.ts.net:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
+curl -s "http://clickhouse-clickhouse.clickhouse.svc.cluster.local:8123/?user=admin&password=$PW" --data-binary 'SELECT version()'
 ```
 
 ## Kafka
 
-`kafka.tail60f7ac.ts.net:9094` (bootstrap; the broker is advertised as
-`kafka-0.tail60f7ac.ts.net:9094`), from `apps/kafka`: Strimzi's operator
+`main-kafka-bootstrap.kafka.svc.cluster.local:9092` over the private route
+(the broker advertises itself by its own `*.svc.cluster.local` name, which
+the route's DNS fallback resolves), from `apps/kafka`: Strimzi's operator
 with local values, and `manifests/kafka.yaml`, the cluster `main` it runs.
 KRaft, one node that is both controller and broker, Kafka 4.3.1, pinned to
 louise next to ClickHouse, the log on a 20Gi Longhorn volume. Topics are git:
 the `events` topic is a `KafkaTopic` in the same file, and the topic
-operator keeps Kafka matching it. No auth; the tailnet is the wall. Three
+operator keeps Kafka matching it. No auth; the private route is the wall. Three
 brokers and controllers wait for the third node (homelab-ansible,
 `docs/ha-plan.md`), and when that happens the replication-factor settings
 in the `Kafka` resource are the lines to raise.
 
-Inside the cluster the bootstrap is
-`main-kafka-bootstrap.kafka.svc.cluster.local:9092`, which is what the
-ClickHouse side uses. `http://kafbat.tail60f7ac.ts.net` is Kafbat UI, its
+The same bootstrap address is what the ClickHouse side uses inside the
+cluster. `http://kafbat-kafka-ui.kafbat.svc.cluster.local` is Kafbat UI, its
 own Application in `apps/kafbat`: topics, messages, consumer groups and
 their lag, which is the easiest way to watch the ClickHouse consumer keep
 up. It is separate so it syncs and upgrades on its own; it only knows the

@@ -17,6 +17,83 @@ Helm only — no Kustomize. Two shapes are in use:
   its CI runners (`arc-charts`, `arc-controller`, `arc-runners`) all arrive
   this way. See [Flow](#flow).
 
+## ArgoCD instances
+
+Two ArgoCDs share the cluster, split by repo. **Flow's** is the original
+`argocd` release in namespace `argocd`: it manages
+spike-electric/flow-infrastructure's `helm/argocd/` and nothing else, and
+everything about it beyond the chart (the repo PAT, the tailnet front door,
+the GitHub webhook, the Tailscale operator) is documented in that repo's
+README under "ArgoCD". **This repo's** is `argocd-homelab` in namespace
+`argocd-homelab`. Both are installed by hand with Helm; the values are
+committed under `bootstrap/` and are the only record of them.
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
+# Flow's (exists; this is how its values change)
+helm upgrade argocd argo/argo-cd --version 10.10.0 -n argocd -f bootstrap/argocd/values.yaml
+# this repo's
+helm install argocd-homelab argo/argo-cd --version 10.10.0 -n argocd-homelab --create-namespace -f bootstrap/argocd-homelab/values.yaml
+```
+
+What keeps them apart:
+
+- **`installationID`**, different in each `argocd-cm`: ArgoCD writes it
+  into every resource's tracking annotation and ignores resources carrying
+  another instance's ID.
+- **One owner for the CRDs**: Flow's release installs them,
+  `argocd-homelab` sets `crds.install: false`. Keep both on the same chart
+  version and upgrade Flow's first.
+- **Separate namespaces for the Application objects**: an instance only
+  watches its own, so every `application.yaml` under `apps/` names
+  `argocd-homelab`.
+
+The personal instance has no front door. Reach it with a port-forward:
+
+```bash
+kubectl -n argocd-homelab port-forward svc/argocd-homelab-server 8443:443
+kubectl -n argocd-homelab get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+argocd login localhost:8443 --grpc-web   # or https://localhost:8443 in a browser
+```
+
+It polls this repo every two minutes (`timeout.reconciliation`); there is
+no webhook. The `homelab-gitops-repo` credential (the deploy key for this
+repo) has to exist in `argocd-homelab` as it does in `argocd`:
+
+```bash
+kubectl -n argocd get secret homelab-gitops-repo -o yaml | sed 's/namespace: argocd$/namespace: argocd-homelab/' | kubectl apply -f -
+```
+
+### The handover (2026-11)
+
+The split was done in this order, each step leaving the cluster running;
+it is also the recipe if an instance ever has to be rebuilt.
+
+1. `helm upgrade` Flow's instance with `bootstrap/argocd/values.yaml`
+   (sets its `installationID`; every resource gets re-annotated on the
+   next sync, which is noise, not change).
+2. Merge the homelab-gitops PR that removes `apps/flow`,
+   `apps/argocd-tailnet`, `apps/tailscale-oauth`, `apps/tailscale-operator`
+   and `apps/traefik-tailnet`. `root` prunes those Application objects;
+   none carries the cascade finalizer, so the operator, the `ingress`
+   device and Flow's tiers keep running, unowned for a few minutes.
+3. Merge the flow-infrastructure PR that defines them there, then
+   `kubectl apply -f helm/argocd/flow.yaml` in that repo. Flow's root
+   adopts them by name.
+4. Install `argocd-homelab` and copy the repo credential in.
+5. Hand this repo's apps over: in the `argocd` namespace delete `root`,
+   then each remaining Application object. **Longhorn first needs its
+   finalizers stripped**, or deleting the Application runs the chart's
+   uninstall hook:
+   `kubectl -n argocd patch application longhorn --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]'`.
+   Everything else deletes plainly: `kubectl -n argocd delete application
+   root cert-manager external-secrets longhorn cloudflared zot plex prefect
+   clickhouse kafka kafbat`.
+6. Merge the PR that moves every `application.yaml` to
+   `namespace: argocd-homelab`, then `kubectl apply -f
+   bootstrap/argocd-homelab/root.yaml`. The new root creates the
+   Applications in its namespace and they adopt the running resources.
+
 ## Secrets
 
 Application secrets come from **Bitwarden Secrets Manager**, synced into the

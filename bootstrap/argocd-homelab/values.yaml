@@ -1,0 +1,23 @@
+# The personal ArgoCD: release `argocd-homelab` in namespace
+# `argocd-homelab`, driving this repo (README, "ArgoCD instances").
+#
+#   helm install argocd-homelab argo/argo-cd --version 10.10.0 \
+#     -n argocd-homelab --create-namespace -f bootstrap/argocd-homelab/values.yaml
+#
+# No front door: it is reached with a port-forward (README). Same chart
+# version as Flow's instance, always; the CRDs are shared.
+
+# The ArgoCD CRDs are cluster-scoped and belong to the `argocd` release
+# (Flow's instance). Two releases installing them would fight over the
+# same objects. Upgrade Flow's instance first when bumping the chart.
+crds:
+  install: false
+
+global:
+  nodeSelector:
+    kubernetes.io/hostname: tina
+
+configs:
+  cm:
+    # See bootstrap/argocd/values.yaml. Must differ from Flow's.
+    installationID: homelab

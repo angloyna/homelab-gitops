@@ -1,0 +1,26 @@
+# Renovate, self-hosted: a CronJob that reads the version pins in this repo
+# and in spike-electric/flow-infrastructure, checks upstream, and opens
+# pull requests with the changelog (README, "Renovate"). What each repo
+# watches and how updates are grouped is that repo's renovate.json; this
+# only runs it. The GitHub token is the hand-created Secret
+# renovate-github-token in the renovate namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: renovate
+  namespace: argocd-homelab
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:angloyna/homelab-gitops.git
+    targetRevision: HEAD
+    path: apps/renovate/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: renovate
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

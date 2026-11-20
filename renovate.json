@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "America/Chicago",
+  "schedule": ["before 7am on monday"],
+  "prConcurrentLimit": 5,
+  "labels": ["renovate"],
+  "argocd": {
+    "managerFilePatterns": ["/^apps/.+/application\\.yaml$/"]
+  },
+  "kubernetes": {
+    "managerFilePatterns": ["/^apps/.+/manifests/.+\\.ya?ml$/"]
+  },
+  "helm-values": {
+    "managerFilePatterns": ["/^apps/.+/[a-z-]*values\\.ya?ml$/"]
+  },
+  "packageRules": [
+    {
+      "description": "One PR a week for everything that is not a major version.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "weekly updates"
+    },
+    {
+      "description": "Majors arrive alone, with their changelog, and wait for a read.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Prefect's own Postgres is pinned to a major; a new major is a migration, not an update.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}

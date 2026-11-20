@@ -1,5 +1,5 @@
-variable "state_passphrase" {
-  description = "Encrypts state and plan files client-side. Supply as TF_VAR_state_passphrase."
+variable "homelab_state_passphrase" {
+  description = "Encrypts state and plan files client-side. Supply as TF_VAR_homelab_state_passphrase; its own name so it never collides with the Spike repos' TF_VAR_state_passphrase in the same shell."
   type        = string
   sensitive   = true
 }

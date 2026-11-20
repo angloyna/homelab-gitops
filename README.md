@@ -340,7 +340,8 @@ password manager, neither in git or Bitwarden:
   `Account Settings: Read`, scoped to this account. Exported as
   `CLOUDFLARE_API_TOKEN`.
 - **The state passphrase**, `openssl rand -base64 48`, exported as
-  `TF_VAR_state_passphrase`.
+  `TF_VAR_homelab_state_passphrase` (its own name: the Spike repos' `TF_VAR_state_passphrase`
+  is a different secret and may be set in the same shell).
 
 Setup, once. The bucket first, versioned so an overwritten state can be
 recovered and closed to the public:
@@ -357,7 +358,7 @@ Then the module:
 ```bash
 export AWS_PROFILE=default
 export CLOUDFLARE_API_TOKEN='…'
-export TF_VAR_state_passphrase='…'
+export TF_VAR_homelab_state_passphrase='…'
 export TF_VAR_account_id='<Zero Trust > Settings > Account: Account ID>'
 export TF_VAR_tunnel_id='<Networks > Tunnels > the tunnel: Tunnel ID>'
 export TF_VAR_tunnel_name='<its name there>'

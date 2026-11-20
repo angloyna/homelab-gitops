@@ -22,7 +22,7 @@ terraform {
 
   encryption {
     key_provider "pbkdf2" "state" {
-      passphrase = var.state_passphrase
+      passphrase = var.homelab_state_passphrase
     }
 
     method "aes_gcm" "state" {

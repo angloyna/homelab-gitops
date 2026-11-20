@@ -63,3 +63,20 @@ variable "public_hostnames" {
     { hostname = "hooks.turdblossom.dev", service = "http://traefik.kube-system:80", comment = "ArgoCD /api/webhook" },
   ]
 }
+
+variable "tailnet_dns" {
+  description = <<-EOT
+    DNS suffixes WARP hands to another resolver on the device instead of to
+    Gateway. The Mac is also on Spike's tailnet, and WARP must own system
+    DNS (Tailscale's "accept DNS" is off), so Tailscale's MagicDNS names are
+    forwarded to its resolver at 100.100.100.100, which lives on the
+    Tailscale interface and is reached outside the WARP route.
+  EOT
+  type = list(object({
+    suffix     = string
+    dns_server = string
+  }))
+  default = [
+    { suffix = "tail60f7ac.ts.net", dns_server = "100.100.100.100" },
+  ]
+}

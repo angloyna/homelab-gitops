@@ -37,6 +37,11 @@ resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "d
       dns_server  = [var.cluster_dns]
       description = "the cluster: ClusterIP Service names, via CoreDNS"
     }],
+    [for t in var.tailnet_dns : {
+      suffix      = t.suffix
+      dns_server  = [t.dns_server]
+      description = "another VPN's names, via its own resolver on the device"
+    }],
     [for d in [
       "home.arpa", "intranet", "internal", "private", "localdomain", "domain",
       "lan", "home", "host", "corp", "local", "localhost", "invalid", "test",

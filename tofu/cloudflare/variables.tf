@@ -55,10 +55,11 @@ variable "public_hostnames" {
     comment  = optional(string)
   }))
   default = [
-    # Flow's two public paths: ArgoCD's GitHub webhook (flow-infrastructure,
-    # argocd-tailnet) and the Alloy push endpoints the Flow hosts write to
-    # (flow-infrastructure, helm/monitoring). Both Ingresses are on Traefik.
-    { hostname = "hooks.turdblossom.dev", service = "http://traefik.kube-system:80", comment = "ArgoCD /api/webhook" },
+    # Flow's two public paths: the Alloy push endpoints the Flow hosts write
+    # to (flow-infrastructure, helm/monitoring) and ArgoCD's GitHub webhook
+    # (flow-infrastructure, argocd-tailnet). Both Ingresses are on Traefik.
+    # In the order the dashboard had them, so the import is a no-op.
     { hostname = "ingest.turdblossom.dev", service = "http://traefik.kube-system:80", comment = "Prometheus remote-write and Loki push" },
+    { hostname = "hooks.turdblossom.dev", service = "http://traefik.kube-system:80", comment = "ArgoCD /api/webhook" },
   ]
 }

@@ -23,8 +23,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "cluster" {
   config = {
     ingress = concat(
       [for h in var.public_hostnames : {
-        hostname = h.hostname
-        service  = h.service
+        hostname       = h.hostname
+        service        = h.service
+        origin_request = {} # as the API reports it; absent would diff forever
       }],
       [{ service = "http_status:404" }],
     )

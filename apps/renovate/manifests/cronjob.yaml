@@ -1,0 +1,64 @@
+# Daily at 06:00 Chicago (11:00 UTC). Each repository's renovate.json
+# schedule decides whether a run opens anything; the daily cadence keeps
+# the Dependency Dashboard issue current. The -full image carries helm,
+# git and the other tools Renovate shells out to (flow-infrastructure's
+# wrapper charts need helm to refresh Chart.lock). Renovate updates this
+# image tag too, through the kubernetes manager in this repo's renovate.json.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate
+  namespace: renovate
+spec:
+  schedule: "0 11 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # Two repositories with a few dozen dependencies take minutes; a run
+      # that is still going after an hour is wedged.
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 12021
+            runAsGroup: 0
+            fsGroup: 0
+          containers:
+            - name: renovate
+              image: renovate/renovate:44.257.5-full
+              env:
+                - name: RENOVATE_CONFIG_FILE
+                  value: /etc/renovate/config.js
+                - name: RENOVATE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-github-token
+                      key: token
+                - name: LOG_LEVEL
+                  value: info
+                - name: RENOVATE_BASE_DIR
+                  value: /tmp/renovate
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/renovate
+                  readOnly: true
+                - name: work
+                  mountPath: /tmp/renovate
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 1Gi
+                limits:
+                  memory: 2Gi
+          volumes:
+            - name: config
+              configMap:
+                name: renovate-config
+            - name: work
+              emptyDir: {}

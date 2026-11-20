@@ -302,6 +302,42 @@ CI and live in flow-infrastructure, as does `zot`, the pull-through mirror
 their dind pulls Docker Hub images through (moved there 2026-11-20; it had
 no other consumer). Nothing of theirs is here.
 
+## Renovate
+
+`apps/renovate`: a CronJob running Renovate against this repo and
+spike-electric/flow-infrastructure, daily at 06:00 Chicago. It reads
+every version pin Renovate knows how to parse, checks upstream, and opens
+pull requests with the changelog; nothing is merged by it. The admin
+config (`manifests/configmap.yaml`) names the two repositories and
+forbids onboarding and shell commands; what each repository watches and
+how updates are grouped is that repository's own `renovate.json`. Here:
+one "weekly updates" PR for minors and patches, each major on its own and
+held until approved on the Dependency Dashboard issue, and Postgres
+majors ignored (a new major is a migration). Renovate updates its own
+CronJob image through the same mechanism.
+
+The one hand-created piece is the GitHub token, a classic personal
+access token with the `repo` and `workflow` scopes (the second so it may
+edit `.github/workflows/` files), from an account with write access to
+both repositories, held as the Secret `renovate-github-token` in the
+`renovate` namespace. It expires: set a reminder.
+
+```bash
+kubectl create namespace renovate
+kubectl -n renovate create secret generic renovate-github-token --from-literal=token='ghp_…'
+```
+
+Run it by hand, and read a run:
+
+```bash
+kubectl -n renovate create job --from=cronjob/renovate renovate-manual-$(date +%s)
+kubectl -n renovate logs -l job-name --tail=200 -f
+```
+
+`LOG_LEVEL=debug` on the CronJob, or `RENOVATE_DRY_RUN=full` for a run
+that only logs what it would do, are the two knobs for a run that did
+something unexpected.
+
 ## Cloudflare
 
 Two halves. **In the cluster**, `apps/cloudflared`: the two-replica

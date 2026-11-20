@@ -1,0 +1,24 @@
+# Renovate's admin config: the platform, the repositories, and the rules a
+# repository may not override. Everything about what to update lives in
+# each repository's renovate.json (requireConfig: a repo without one is
+# skipped, never onboarded with a generated PR).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: renovate-config
+  namespace: renovate
+data:
+  config.js: |
+    module.exports = {
+      platform: "github",
+      repositories: [
+        "angloyna/homelab-gitops",
+        "spike-electric/flow-infrastructure",
+      ],
+      onboarding: false,
+      requireConfig: "required",
+      // Nothing is run from the repositories being updated.
+      allowedCommands: [],
+      // A fresh clone every run; the cache volume below is for lookups only.
+      persistRepoData: false,
+    };

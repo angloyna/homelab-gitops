@@ -5,17 +5,15 @@ worker). Everything lives under `apps/`; `apps/root/application.yaml` discovers
 each app by globbing `*/application.yaml`, so adding a directory with an
 `application.yaml` is all it takes to register one.
 
-Helm only — no Kustomize. Two shapes are in use:
+Helm only — no Kustomize. Two shapes are in use: **upstream chart + local
+values** (`cert-manager`, `external-secrets`, `longhorn`, `zot`), a
+multi-source Application with values referenced through a `$values` ref
+source; and **raw manifests** (`cloudflared`, `plex`), a directory of YAML.
 
-- **upstream chart + local values** (`cert-manager`, `external-secrets`,
-  `longhorn`, `zot`, `tailscale-operator`): a multi-source Application,
-  values referenced through a `$values` ref source. `traefik-tailnet` is
-  the one raw-manifest app, a single Service (see [Tailscale](#tailscale)).
-- **nested app-of-apps in another repo** (`flow`): the Application points at
-  a directory of Applications in `spike-electric/flow-infrastructure`, whose
-  charts and values live there too. Flow itself, its monitoring stack and
-  its CI runners (`arc-charts`, `arc-controller`, `arc-runners`) all arrive
-  this way. See [Flow](#flow).
+Spike's Flow also runs on this cluster, under its own ArgoCD and its own
+repo, spike-electric/flow-infrastructure. This repo supplies the platform
+Flow stands on (cert-manager, External Secrets, Longhorn, the Cloudflare
+tunnel) and nothing of Flow's (see [Flow](#flow)).
 
 ## ArgoCD instances
 
@@ -102,16 +100,14 @@ store and the ExternalSecrets that use it are defined in flow-infrastructure
 (see [Flow](#flow)); this repo supplies the operator, the SDK server and the
 bootstrap token.
 
-Six credentials are created by hand and belong to neither git nor
-Bitwarden: the ESO bootstrap token below, the PAT ArgoCD reads
-flow-infrastructure with (see [Flow](#flow)), the GitHub PAT the CI
-runners use (see [CI runners](#ci-runners)), Prefect's database
-password and ClickHouse's admin password, which are not Flow's and so stay
-out of Flow's Bitwarden (see [Prefect](#prefect) and
-[ClickHouse](#clickhouse)), and the Cloudflare tunnel token (see
-[Cloudflare tunnel](#cloudflare-tunnel)). The Tailscale operator's OAuth client used
-to be one of these; it now comes from Bitwarden (see
-[Tailscale](#tailscale)).
+Four credentials are created by hand and belong to neither git nor
+Bitwarden: the ESO bootstrap token below, Prefect's database password and
+ClickHouse's admin password, which are not Flow's and so stay out of
+Flow's Bitwarden (see [Prefect](#prefect) and [ClickHouse](#clickhouse)),
+and the Cloudflare tunnel token (see [Cloudflare tunnel](#cloudflare-tunnel)).
+Flow's own by-hand credentials (the PAT its ArgoCD reads
+flow-infrastructure with, the CI runners' PAT) are listed in that repo's
+README.
 
 ### How it fits together
 
@@ -122,7 +118,8 @@ Bitwarden SM org 006747b1-…: projects flow-staging, flow-dev
 bitwarden-sdk-server  ──HTTPS──▶  External Secrets Operator
   (REST shim for the                      │
    Rust SDK, :9998)                       │  ClusterSecretStores, one per project
-                                          │  (flow-infrastructure, helm/flow-secrets)
+                                          │  (flow-infrastructure, helm/flow-secrets,
+                                          │   applied by Flow's ArgoCD)
                       ┌───────────────────┴───────────────────┐
                       ▼ "flow-dev"                            ▼ "flow-secrets" (flow-staging)
    Secret/flow-dev-secrets +                      Secret/grafana-secrets
@@ -139,33 +136,11 @@ Healthy before starting the next:
 |-----:|-----|------------------------|
 | `-3` | `cert-manager` | issues the TLS cert the SDK server needs |
 | `-2` | `external-secrets` | provides the CRDs and the SDK server |
-| `0`  | `flow` | the nested app-of-apps; its children carry their own waves in flow-infrastructure (the three ARC apps at -4/-3/-2, `flow-secrets` -1, then `flow-dev` and the monitoring apps at 0), and inside the flow chart the ExternalSecrets, database, Flyway hook and apps are waved again |
-| `1`  | `tailscale-oauth` | the operator's credential, an ExternalSecret through the `flow-dev` store that `flow` defines |
-| `2`  | `tailscale-operator` | cannot start without that Secret |
-| `3`  | `traefik-tailnet` | a Service the operator has to be there to claim |
 
-**The CI runners are children of `flow`, not of `root`.** They used to be
-three apps here at waves ahead of everything, so that a wedged Flow sync
-could never stop them being applied; that ordering now lives inside
-flow-infrastructure's `helm/argocd/`, where the ARC apps sit ahead of
-`flow-secrets`. What this costs is that the runners now wait on
-`cert-manager` and `external-secrets`, both local and both stable, and that
-a wedged `root` (a chart that cannot render, say) would hold them up along
-with everything else. Nothing CI needs is behind them.
-
-**The `flow-dev` namespace is being reused.** The first attempt at Flow on
-this cluster (`apps/flow`, `apps/flow-migrations`, `apps/flow-secrets` as
-in-repo charts, images pushed by hand to zot) was disabled on 2026-10-03 and
-replaced by the dev environment defined in flow-infrastructure, which lands
-in the same namespace under new names (`flow-dev-api`, `flow-dev-db-0`,
-...). The `flow-secrets` ClusterSecretStore the old app created is the one
-the new apps adopt (same Application name). The old objects are not: before
-the new Application's first sync, delete what the retired charts left --
-the scaled-down workloads, the `flow-dev-secrets` ExternalSecret, and the
-Longhorn volumes `data-flow-db-0` and `flow-attachments` -- so the restore
-starts from an empty volume and nothing old answers on the old Service
-names. `kubectl delete namespace flow-dev` is the simplest way; ArgoCD
-recreates the namespace.
+The platform apps above are this instance's whole bootstrap; everything
+else here (`longhorn`, `zot`, `cloudflared`, `plex`, `prefect`,
+`clickhouse`, `kafka`, `kafbat`) has no wave and no ordering need. Flow's
+waves live in flow-infrastructure, under its own ArgoCD.
 
 ### The bootstrap secret
 
@@ -279,116 +254,34 @@ so the first ESO sync broke every database client until the `ALTER USER` above.
 
 ## Flow
 
-Spike's Flow runs in this cluster -- a dev environment, its Bitwarden
-secret store, and the Prometheus/Loki/Grafana stack that watches the Flow
-hosts -- but it is Spike's, so everything about it lives in
-`spike-electric/flow-infrastructure` under `helm/` (that repo's README has
-the design, the manual prerequisites and the verification commands).
-`apps/flow/` is the only trace here: an Application that syncs the
-Applications defined in that repo's `helm/argocd/`. Images come from GHCR,
-built by the flow repo's own workflow, which also commits each new tag into
-flow-infrastructure; nothing here changes per deploy.
-
-ArgoCD needs read access to that repo. The org disallows deploy keys, so it
-is a fine-grained PAT (Contents: read-only on that one repository, nothing
-else) held as a repository Secret in the `argocd` namespace,
-`flow-infrastructure-repo`, over HTTPS. Like the runners' PAT it is created
-by hand and is not in Bitwarden; it expires, so set a reminder, and renew by
-recreating the Secret:
-
-```bash
-kubectl -n argocd create secret generic flow-infrastructure-repo \
-  --from-literal=type=git \
-  --from-literal=url=https://github.com/spike-electric/flow-infrastructure.git \
-  --from-literal=username=x-access-token \
-  --from-literal=password='github_pat_…' \
-  --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n argocd label secret flow-infrastructure-repo argocd.argoproj.io/secret-type=repository --overwrite
-```
-
-Everything there reads Bitwarden through the `flow-secrets`
-ClusterSecretStore, so it depends on the bootstrap token above being valid.
+Spike's Flow runs in this cluster -- three dev tiers, its Bitwarden secret
+stores, the Prometheus/Loki/Grafana stack that watches the Flow hosts, its
+CI runners, and the Tailscale operator that puts those on Spike's tailnet
+-- but it is Spike's, so all of it is defined in
+spike-electric/flow-infrastructure and applied by that repo's own ArgoCD
+(the `argocd` namespace; see [ArgoCD instances](#argocd-instances)).
+Nothing of Flow's is in this repo. What Flow depends on from here is the
+platform: cert-manager, External Secrets and its bootstrap token, Longhorn,
+and the tunnel hostnames below. The one thing that runs the other way is
+the tailnet, next.
 
 ## Tailscale
 
-`tailscale-operator` is the [Tailscale Kubernetes
-operator](https://tailscale.com/kb/1236/kubernetes-operator); `traefik-tailnet`
-is a second LoadBalancer Service over k3s's Traefik pods with
-`loadBalancerClass: tailscale`, which the operator turns into a tailnet
-device named `ingress`. Traefik still routes by hostname, so putting a site
-on the tailnet is a DNS record for its name pointing at that device's
-100.x address, plus a certificate Traefik can serve for it; the record can
-be public (a tailnet address resolves to nothing for anyone outside) and the
-certificate comes from cert-manager through a DNS-01 ClusterIssuer that
-flow-infrastructure defines (`helm/letsencrypt`). Grafana and Flow's dev
-tier (`grafana.` and `dev.spikeelectric.dev`) are on it, and so is ArgoCD
-(`argocd-tailnet`, below); the Cloudflare tunnel's public hostnames carry
-the rest for now.
-
-### ArgoCD on the tailnet
-
-`https://argocd.spikeelectric.dev`, from `apps/argocd-tailnet`: a DNS-only
-A record at the ingress device, an Ingress on `websecure` with a
-cert-manager certificate, and a second Service over the argocd-server pods
-that carries the Traefik annotations for re-encrypting to argocd-server's
-own self-signed TLS (plain HTTP to it is a redirect loop). The hand-installed
-`argocd` Helm release is untouched: `server.insecure` stays off and its
-Service is not edited. The `url` in `argocd-cm` is still the chart's
-placeholder; it only matters once SSO is configured. The CLI goes through
-the same door with `argocd login argocd.spikeelectric.dev --grpc-web`.
-
-The same app also carries the GitHub push webhook, so a commit is picked
-up in seconds instead of on the two-minute poll: `/api/webhook`, and only
-that path, on the Cloudflare Tunnel as `hooks.turdblossom.dev`, plus an
-ExternalSecret that merges the signing secret into `argocd-secret`. The
-secret is generated by flow-infrastructure (`environments/dev`,
-`ARGOCD__WEBHOOK_SECRET`); the tunnel hostname and the webhooks on each
-repository are set by hand, as that repo's README ("ArgoCD webhook") lays
-out.
-
-### Where the credential comes from
-
-The operator logs in with an OAuth client. flow-infrastructure creates it
-with OpenTofu (`modules/tailscale`, applied from `shared/`) along with the
-tailnet policy that defines `tag:k8s-operator` and lets it own `tag:k8s`,
-and `environments/dev` there writes the client's id and secret into the
-flow-dev Bitwarden project. `apps/tailscale-oauth` is an ExternalSecret
-that turns those into the `operator-oauth` Secret the chart mounts. No
-step here; rotating the client is a `tofu apply` in that repo, and the
-operator picks the new mount up on its next restart:
-
-```bash
-kubectl -n tailscale rollout restart deploy/operator
-```
-
-### Verifying
-
-```bash
-kubectl -n tailscale get pods                       # operator-0 plus one ts-traefik-tailnet-* proxy
-kubectl -n kube-system get svc traefik-tailnet      # EXTERNAL-IP: ingress.<tailnet>.ts.net
-tailscale status | grep -E 'ingress|tailscale-operator'
-```
-
-The device's address is what DNS records for tailnet-only sites point at:
-`tailscale ip -4 ingress`. The operator renames or replaces the proxy on
-some upgrades, but the address is stable for the device's lifetime; if it
-ever changes, the records do too.
+The tailnet is Spike's (`spikeelectric.github`), and so is the Tailscale
+Kubernetes operator: its OAuth client, the tailnet policy and the operator
+Application are all in flow-infrastructure. This repo still uses it. The
+`prefect`, `clickhouse` and `kafka` devices are LoadBalancer Services with
+`loadBalancerClass: tailscale` that the operator claims, which is what
+makes those three reachable from a laptop on that tailnet and from nowhere
+else. If Flow's operator ever goes away, those Services sit Pending and the
+three become LAN-only until they are exposed some other way.
 
 ## CI runners
 
-The GitHub Actions self-hosted runners for **spike-electric/flow**
-(`arc-charts`, `arc-controller`, `arc-runners`: the `flow-k8s` pool) are
-Flow's CI, so they are defined in flow-infrastructure, under `helm/`, and
-arrive here through the `flow` Application like everything else of Flow's.
-That repo's README has the design, the one manual step (the `github-pat`
-Secret in the `arc-runners` namespace, created by hand and in neither git
-nor Bitwarden), the verification commands and the runbook for pods stuck in
-`PodInitializing`.
-
-What is still this repo's: the runners' dind pulls Docker Hub images through
-`zot` (`--registry-mirror`, pointed at `zot.zot.svc.cluster.local:5000`), so
-`apps/zot` has to exist and answer on that Service name; and the runner pods
-need `/dev/net/tun` on the node, which k3s provides.
+The GitHub Actions self-hosted runners for spike-electric/flow are Flow's
+CI and live in flow-infrastructure. The only thing of theirs here is
+`zot`, the pull-through mirror their dind pulls Docker Hub images through
+(see [Gotchas](#gotchas)).
 
 ## Cloudflare tunnel
 
@@ -599,12 +492,6 @@ attaches wherever the pod lands, and tina has Quick Sync too.
 
 ## Gotchas
 
-**Migrations are an ArgoCD hook, not a tracked Job.** The old
-`flow-migrations-dev` Job was immutable and permanently OutOfSync after any
-template change. The flow chart in flow-infrastructure runs Flyway as a Sync
-hook with `BeforeHookCreation`, so it is recreated every sync and never part
-of the diff; a failed migration fails the sync instead of wedging it.
-
 **Nothing is pinned to a node any more.** Earlier values files pinned flow and
 zot to `tina` citing "louise network flakiness". That was a misdiagnosis — the
 real cause was a pending kernel upgrade leaving the running kernel's modules
@@ -613,8 +500,8 @@ actively harmful while flow pulled its images from it: a registry pinned to
 the same node as everything else means a node reboot leaves every pod in
 `ImagePullBackOff`.
 
-**ArgoCD is not managed by this repo** and is pinned to `tina` in its own Helm
-release, so it is unavailable while `tina` reboots. Drain first so workloads
+**Both ArgoCD instances are pinned to `tina`** (`bootstrap/*/values.yaml`),
+so neither is available while `tina` reboots. Drain first so workloads
 migrate while the API server is still up:
 
 ```bash

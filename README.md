@@ -288,7 +288,12 @@ split tunnel and DNS fallback, who may enroll, which machine, and the
 Gateway policy that admits only that login on that machine) is OpenTofu:
 `tofu/cloudflare/`, see [Cloudflare](#cloudflare). The laptop's part is
 `brew install --cask cloudflare-warp`, log in to the Zero Trust team,
-enroll, and the table above works.
+enroll, and the table above works. One thing to know if the laptop is
+also on a tailnet: WARP has to own system DNS, so Tailscale's DNS handling
+is turned off (`tailscale set --accept-dns=false`), and the module forwards
+the tailnet's MagicDNS suffix to Tailscale's resolver (`var.tailnet_dns`)
+so those names keep resolving. With both on, WARP sits in "connecting"
+forever and `svc.cluster.local` never resolves.
 
 ## CI runners
 

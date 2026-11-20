@@ -15,6 +15,10 @@ data:
         "angloyna/homelab-gitops",
         "spike-electric/flow-infrastructure",
       ],
+      // Commits are authored as the token's account under its GitHub
+      // noreply address; without this Renovate falls back to a Mend-owned
+      // address and warns on every run.
+      gitAuthor: "angloyna <angloyna@users.noreply.github.com>",
       onboarding: false,
       requireConfig: "required",
       // Nothing is run from the repositories being updated.

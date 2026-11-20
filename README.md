@@ -283,31 +283,17 @@ any more. The Zero Trust side is set by hand; this is what it is.
 | Kafbat UI | `http://kafbat-kafka-ui.kafbat.svc.cluster.local` |
 | Longhorn UI | `http://longhorn-frontend.longhorn-system.svc.cluster.local` |
 
-Zero Trust, once:
-
-1. **Tunnel route.** Networks > Tunnels > the tunnel > Private Network:
-   add `10.43.0.0/16`, k3s's Service CIDR. The cloudflared pods are inside
-   the cluster, so every ClusterIP is one hop for them.
-2. **DNS.** Settings > WARP Client > the default device profile > Local
-   Domain Fallback: `svc.cluster.local` resolved by `10.43.0.10` (CoreDNS,
-   inside the routed range). That is what turns the names above into
-   addresses on the laptop.
-3. **Split tunnel, include mode.** Same profile: Include IPs and domains,
-   only `10.43.0.0/16`. Nothing else on the laptop goes through WARP, at
-   home or away.
-4. **Only this computer.** Settings > WARP Client > Device enrollment
-   permissions: one rule, the login email, one-time PIN. Settings > WARP
-   Client > Device posture: a Serial Number list holding the Mac's serial.
-   Then Gateway > Firewall policies > Network: allow destination
-   `10.43.0.0/16` when the identity is that email **and** the serial-number
-   check passes; a second rule blocks `10.43.0.0/16` for everything else.
-   Enrollment alone admits any device that email can log in from; the
-   posture rule is what makes it one machine.
-
-The laptop: `brew install --cask cloudflare-warp`, log in to the Zero
-Trust team, enroll, and the table above works. The connector in the
-cluster needs nothing: `warp-routing` is enabled on the tunnel's settings
-page, and the pods already reach ClusterIPs.
+The Zero Trust side of that (the tunnel's CIDR route, the WARP profile's
+split tunnel and DNS fallback, who may enroll, which machine, and the
+Gateway policy that admits only that login on that machine) is OpenTofu:
+`tofu/cloudflare/`, see [Cloudflare](#cloudflare). The laptop's part is
+`brew install --cask cloudflare-warp`, log in to the Zero Trust team,
+enroll, and the table above works. One thing to know if the laptop is
+also on a tailnet: WARP has to own system DNS, so Tailscale's DNS handling
+is turned off (`tailscale set --accept-dns=false`), and the module forwards
+the tailnet's MagicDNS suffix to Tailscale's resolver (`var.tailnet_dns`)
+so those names keep resolving. With both on, WARP sits in "connecting"
+forever and `svc.cluster.local` never resolves.
 
 ## CI runners
 
@@ -316,25 +302,93 @@ CI and live in flow-infrastructure. The only thing of theirs here is
 `zot`, the pull-through mirror their dind pulls Docker Hub images through
 (see [Gotchas](#gotchas)).
 
-## Cloudflare tunnel
+## Cloudflare
 
-`apps/cloudflared`: the two-replica cloudflared Deployment that connects the
-cluster to the Cloudflare Tunnel carrying the public hostnames
-(`ingest.turdblossom.dev`, `hooks.turdblossom.dev`) to Traefik. The
-hostnames and their origins live in Zero Trust, set by hand; this repo only
-runs the connector. It was hand-installed in July 2026 on the `latest` tag
-and adopted here on 2026-10-07 pinned to the version then running; upgrading
-is a tag bump in `manifests/deployment.yaml`.
-
-The tunnel token is the hand-created `tunnel-token` Secret in the
-`cloudflared` namespace, key `token`, from the tunnel's page in Zero Trust.
-It predates the Application and carries no ArgoCD labels, so prune leaves it
-alone. Recreating it on a new cluster:
+Two halves. **In the cluster**, `apps/cloudflared`: the two-replica
+cloudflared Deployment that connects the Cloudflare Tunnel. It was
+hand-installed in July 2026 on the `latest` tag and adopted here on
+2026-10-07 pinned to the version then running; upgrading is a tag bump in
+`manifests/deployment.yaml`. Its token is the hand-created `tunnel-token`
+Secret in the `cloudflared` namespace, key `token`, from the tunnel's page
+in Zero Trust; it predates the Application and carries no ArgoCD labels,
+so prune leaves it alone. Recreating it on a new cluster:
 
 ```bash
 kubectl create namespace cloudflared
 kubectl -n cloudflared create secret generic tunnel-token --from-literal=token='<tunnel token>'
 ```
+
+**In Cloudflare**, `tofu/cloudflare/`, an OpenTofu root module for
+everything the tunnel and the private network need on the account side.
+Until 2026-11 all of it was set by hand in the Zero Trust dashboard.
+
+| what | resource | note |
+|---|---|---|
+| the tunnel | `cloudflare_zero_trust_tunnel_cloudflared.cluster` | imported, `prevent_destroy`: a new tunnel would mean a new token in the cluster |
+| its public hostnames | `..._tunnel_cloudflared_config.cluster` | `hooks.` and `ingest.turdblossom.dev` to Traefik, both Flow's (flow-infrastructure); `var.public_hostnames` |
+| the private network | `..._tunnel_cloudflared_route.cluster_services` | `10.43.0.0/16`, k3s's Service CIDR, through the tunnel |
+| the WARP profile | `..._device_default_profile.default` and `..._local_domain_fallback.default` | include-mode split tunnel of that CIDR only; `svc.cluster.local` resolved by CoreDNS `10.43.0.10` |
+| who may enroll | `..._access_application.warp_enrollment` + `..._access_policy.enroll` | one email, `var.login_email` |
+| which machine | `..._list.device_serials` + `..._device_posture_rule.known_device` | serial numbers, `var.device_serial_numbers` |
+| who gets in | `..._gateway_policy.cluster_allow` / `cluster_block` | the login on a listed machine may reach the CIDR; everyone else enrolled is blocked from it |
+
+State is one object in the S3 bucket `angloyna-homelab-tofu-state` in
+the personal AWS account (profile `default`, region `us-east-1`), versioned,
+locked with S3's own lock file, and encrypted client-side with a
+passphrase before upload, the way the Spike repos keep theirs. Two
+credentials beyond the AWS profile, both by hand and in the personal
+password manager, neither in git or Bitwarden:
+
+- **An API token** (Cloudflare dashboard > profile > API Tokens), with
+  Account permissions `Cloudflare Tunnel: Edit`, `Zero Trust: Edit`,
+  `Access: Apps and Policies: Edit`, `Access: Device Posture: Edit`, and
+  `Account Settings: Read`, scoped to this account. Exported as
+  `CLOUDFLARE_API_TOKEN`.
+- **The state passphrase**, `openssl rand -base64 48`, exported as
+  `TF_VAR_homelab_state_passphrase` (its own name: the Spike repos' `TF_VAR_state_passphrase`
+  is a different secret and may be set in the same shell).
+
+Setup, once. The bucket first, versioned so an overwritten state can be
+recovered and closed to the public:
+
+```bash
+export AWS_PROFILE=default
+aws s3api create-bucket --bucket angloyna-homelab-tofu-state --region us-east-1
+aws s3api put-bucket-versioning --bucket angloyna-homelab-tofu-state --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket angloyna-homelab-tofu-state --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+Then the module:
+
+```bash
+export AWS_PROFILE=default
+export CLOUDFLARE_API_TOKEN='…'
+export TF_VAR_homelab_state_passphrase='…'
+export TF_VAR_account_id='<Zero Trust > Settings > Account: Account ID>'
+export TF_VAR_tunnel_id='<Networks > Tunnels > the tunnel: Tunnel ID>'
+export TF_VAR_tunnel_name='<its name there>'
+export TF_VAR_login_email='you@example.com'
+export TF_VAR_device_serial_numbers='["<serial from: system_profiler SPHardwareDataType>"]'
+cd tofu/cloudflare && tofu init
+# the CIDR route was created in the dashboard before the module; adopt it
+tofu import cloudflare_zero_trust_tunnel_cloudflared_route.cluster_services "$TF_VAR_account_id/<Networks > Routes > the route's ID>"
+tofu plan
+```
+
+The plan's imports (the tunnel, its config, the default WARP profile and
+its fallback list) should show no changes beyond what this module adds:
+the route's comment, the profile's include list, the fallback entry for
+the cluster, and the enrollment, posture and Gateway objects as creates.
+If the plan wants to create `warp_enrollment` but apply answers that an
+application of type `warp` already exists, Zero Trust made one when
+enrollment permissions were first touched in the dashboard: import it
+with `tofu import cloudflare_zero_trust_access_application.warp_enrollment
+"$TF_VAR_account_id/<its id, from Access > Applications>"` and plan again.
+Then `tofu apply`, and the private network is live for the listed machine
+once WARP on it is enrolled with that login.
+
+A second laptop is one more serial in `TF_VAR_device_serial_numbers`. A
+third public hostname is one more entry in `var.public_hostnames`.
 
 ## Prefect
 
